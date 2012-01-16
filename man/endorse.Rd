@@ -1,0 +1,500 @@
+\name{endorse}
+\alias{endorse}
+\title{
+  Fitting the Measurement Model of Political Support via Markov Chain
+  Monte Carlo
+}
+\description{
+  This function generates a sample from the posterior distribution of the
+  measurement model of political support. Individual-level covariates
+  may be included in the model. The details of the model are given under
+  `Details'. See also Bullock et al. (2011).
+}
+\usage{
+endorse(Y,
+        data,
+        treat = NA,
+        na.strings = NA,
+        covariates = FALSE,
+        formula = NA,
+        x.start = NA,
+        s.start = 0,
+        beta.start = 1,
+        tau.start = NA,
+        lambda.start = 0,
+        omega2.start = 1,
+        theta.start = 0,
+        phi2.start = 1,
+        delta.start = 0,
+        mu.beta = 0,
+        mu.x = 0,
+        mu.theta = 0,
+        mu.delta = 0,
+        precision.beta = 0.1,
+        precision.x = 1,
+        precision.theta = 0.1,
+        precision.delta = 0.1,
+        s0.omega2= 1,
+        nu0.omega2 = 1,
+        s0.phi2 = 1,
+        nu0.phi2 = 1,
+        MCMC = 20000,
+        burn = 1000,
+        thin = 1,
+        mda = TRUE,
+        mh = TRUE,
+        prop = 0.001,
+        x.sd = TRUE,
+        tau.out = FALSE)
+}
+
+\arguments{
+
+  \item{Y}{a list of the variable names for the responses. It should
+    take the following form: \code{list(Q1 = c("varnameQ1.1", ...), Q2 =
+    c("varnameQ2.1", ...), ...)}. If \code{treat} is \code{NA}, the first
+    variable for each question should be the responses of the
+    control observations while each of the other variables should
+    correspond to each endorser. \code{treat} should be supplied if
+    only one variable name is provided for a question in this argument.
+  }
+
+  \item{data}{data frame containing the variables.
+  }
+
+  \item{treat}{An optional matrix of non negative integers indicating
+    the treatment
+    status of each observation and each question.
+    Rows are observations
+    and columns are questions. 0 represents the control status while
+    positive integers indicate treatment statuses.
+    If \code{treat} is set to \code{NA}, the function generates the    
+    treatment matrix using \code{Y}.
+    The default is \code{NA}.
+  }
+  
+  \item{na.strings}{a scalar which are to be interpreted as \code{NA}
+    values.
+  }
+
+  \item{covariates}{logical. If \code{TRUE}, the model includes
+    individual-level covariates. The default is \code{FALSE}.}
+
+  \item{formula}{a symbolic description specifying the covariates for the
+    support parameter and the ideal points. The formula should be
+    one-sided, e.g. \code{ ~ Z1 + Z2}.
+  }
+
+  \item{x.start}{starting values for the ideal points vector \eqn{x}. If
+    \code{x.start} is \code{NA}, the function uses a sample of the same
+    size as the number of respondents from the normal distribution with
+    mean 0 and variance 1    
+    as the starting values for the ideal points. If
+    \code{x.start} is set to a scalar, the starting values for the ideal
+    points of all respondents will be set to the scalar. If
+    \code{x.start} is a vector of the same length as the number of
+    observations, then this vector will be used as the starting
+    values. The default is \code{NA}.
+  }
+
+  \item{s.start}{starting values for the support parameter, \eqn{s_ijk}.
+    If \code{s.start} is set to a scalar, the starting values for the
+    support parameter of all respondents and all questions will be the
+    scalar.
+    If \code{s.start} is set to a matrix, it should have the same number
+    of rows as the number of observations and the same number of columns
+    as the number of questions. Also, the value should be zero for the
+    control condition.
+    The default is \code{0}.
+  }
+
+  \item{beta.start}{starting values for the question related parameters,
+    \eqn{\alpha_j} and \eqn{\beta_j}.
+    If \code{beta.start} is set to a scalar, the starting values for the
+    support parameter of all respondents and all questions will be the
+    scalar.
+    If \code{beta.start} is set to a matrix, the number
+    of rows should be the number of questions and the number of columns
+    should be 2.
+    The first column
+    will be the starting values for \eqn{\alpha_j} and the second column
+    will be the starting values for \eqn{\beta_j}.
+    Since the parameter values are constrained to be positive, the starting
+    values should be also positive.
+    The default is \code{1}.
+  }
+
+  \item{tau.start}{starting values for the cut points in the response
+    model. If \code{NA}, the function generates the starting values
+    so that each interval between the cut points is 0.5.
+    If \code{tau.start} is set to a matrix, the number of rows should be
+    the same as the number of questions and the number of columns should
+    be the maximum value of the number of categories in the responses.
+    The first cut point for each question should be set to 0 while the
+    last one set to the previous cut point plus 1000.
+    The default is \code{NA}.
+  }
+
+  \item{lambda.start}{starting values for the coefficients in the
+    support parameter model, \eqn{\lambda_jk}{lambda_jk}.
+    If \code{lambda.start} is set to a scalar, the starting values for
+    all coefficients will be the scalar.
+    If \code{lambda.start} is set to a matrix, the number of rows should
+    be the number of questions times the dimension of covariates matrix,
+    and the number of columns should be the same as the number of
+    endorsers.
+    The default is \code{0}.
+  }
+
+  \item{omega2.start}{starting values for the variance of the support
+    parameters, \eqn{\omega_{jk}^{2}}{omega_{jk}^2}.
+    If \code{omega2.start} is set to a scalar, the starting values for
+    \eqn{omega_{jk}^{2}}{omega_{jk}^2} will be the diagonal matrix with
+    the diagonal elements set to the scalar.
+    If \code{omega2.start} is set to a matrix, the number of rows should
+    be the number of questions, 
+    while the number of columns should be the same as the number of
+    endorsers.
+    The default is \code{1}.
+  }
+
+  \item{theta.start}{starting values for the means of the
+    \eqn{\lambda_{jk}}{lambda_jk} for each endorser.
+    If \code{theta.start} is set to a scalar, the starting values for
+    all parameters will be the scalar.
+    If \code{theta.start} is set to a vector, the length should be the
+    number of endorsers times the dimension of covariates.
+    The default is \code{0}.
+  }
+
+  \item{phi2.start}{starting values for the covariance matrices of the
+    coefficients
+    of the support parameters, \eqn{\Phi_{k}}{Phi_k}.
+    \eqn{\Phi_{k}}{Phi_k} is assumed to be a diagonal matrix.
+    If \code{phi2.start} is set to a scalar, the starting values for
+    all covariance matrices will be the same diagonal matrix with the
+    diagonal elements set to the scalar.
+    If \code{phi2.start} is set to a vector, the length should be the
+    number of endorsers times the dimension of covariates.
+    The default is \code{1}.
+  }
+
+  \item{delta.start}{starting values for the coefficients in the ideal
+    point model. Will be used only if \code{covariates = TRUE}.
+    If \code{delta.start} is set to a scalar, the starting values for
+    all coefficients will be the scalar.
+    If \code{delta.start} is set to a vector, the length should be the
+    dimension of covariates.
+    The default is \code{0}.
+  }
+
+  \item{mu.beta}{the mean of the independent Normal prior on the
+    question related parameters. Can be either a scalar or a matrix of
+    dimension the number of questions times 2.
+    The default is \code{0}.
+  }
+
+  \item{mu.x}{the mean of the independent Normal prior on the
+    question related parameters. Can be either a scalar or a vector of
+    the same length as the number of observations.
+    The default is \code{0}.
+  }
+
+  \item{mu.theta}{the mean of the independent Normal prior on the
+    mean of the coefficients in the support parameter model.
+    Can be either a scalar or a vector of
+    the same length as the dimension of covariates.
+    The default is \code{0}.
+  }
+
+  \item{mu.delta}{the mean of the independent Normal prior on the
+    the coefficients in the ideal point model.
+    Can be either a scalar or a vector of
+    the same length as the dimension of covariates.
+    The default is \code{0}.
+  }
+
+  \item{precision.beta}{the precisions (inverse variances) of the
+    independent Normal prior on the
+    question related parameters. Can be either a scalar or
+    a 2 \eqn{\times}{by} 2 diagonal matrix.
+    The default is \code{0.1}.
+  }
+
+  \item{precision.x}{scalar. The known precision of the
+    independent Normal distribution on the
+    ideal points.
+    The default is \code{1}.
+  }
+
+  \item{precision.theta}{the precisions of the
+    independent Normal prior on the means of the coefficients
+    in the support parameter model. Can be either a scalar or
+    a vector of the same length as the dimension of covariates.
+    The default is \code{0.1}.
+  }
+
+  \item{precision.delta}{the precisions of the
+    independent Normal prior on the the coefficients
+    in the ideal point model. Can be either a scalar or
+    a square matrix of the same dimension as the dimension of
+    covariates.
+    The default is \code{0.1}.
+  }
+
+  \item{s0.omega2}{scalar. The scale of the independent scaled
+    inverse- chi-squared    
+    prior for the variance parameter in the support parameter model.
+    The default is \code{1}.
+  }
+
+  \item{nu0.omega2}{scalar. The degrees of freedom of the independent
+    scaled inverse-chi-squared    
+    prior for the variance parameter in the support parameter model.
+    The default is \code{1}.
+  }
+
+  \item{s0.phi2}{scalar. The scale of the independent
+    scaled inverse-chi-squared
+    prior for the variances of the coefficients in
+    the support parameter model.
+    The default is \code{1}.
+  }
+
+  \item{nu0.phi2}{scalar. The degrees of freedom of the independent
+    scaled
+    inverse-chi-squared
+    prior for the variances of the coefficients in
+    the support parameter model.
+    The default is \code{1}.
+  }
+
+  \item{MCMC}{the number of iterations for the sampler. The default is
+    \code{20000}.
+  }
+
+  \item{burn}{the number of burn-in iterations for the sampler. The
+    default is \code{1000}.
+  }
+
+  \item{thin}{the thinning interval used in the simulation. The default
+    is \code{1}.
+  }
+
+  \item{mda}{logical. If \code{TRUE}, the marginal data augmentation
+    algorithm is used to sample the question related parameters,
+    \eqn{\alpha} and \eqn{\beta}. The default is \code{TRUE}.
+  }
+
+  \item{mh}{logical. If \code{TRUE}, the Metropolis-Hastings algorithm
+    is used to sample the cut points in the response model. The default is
+    \code{TRUE}.
+  }
+
+  \item{prop}{a positive number. The proposal variance for the
+  Metropolis-Hastings algorithm. The default is \code{0.001}.}
+
+  \item{x.sd}{logical. If \code{TRUE}, The standard deviation of the
+  ideal points in each draw will be stored. If \code{FALSE}, a sample of
+  the ideal points will be stored. \emph{NOTE: Because storing a sample
+  takes an enormous amount of memory, this option should be
+  selected only if the chain is thinned heavily or the data have a small
+  number of observations.}
+  }
+
+  \item{tau.out}{a switch that determines whether or not to store the
+    cut points in the response model. The default is \code{FALSE}.
+  }
+    
+}
+
+\details{
+  The model takes the following form:
+  
+  Consider an endorsement experiment where we wish to measure the level
+  of support for \eqn{K} political
+  actors.  In the survey, respondents are asked whether or
+  not they support each of \eqn{J} policies chosen by researchers.
+  Let \eqn{Y_{ij}} represent respondent
+  \eqn{i}'s answer to the survey question regarding policy \eqn{j}.
+  Suppose that the response variable \eqn{Y_{ij}} is the ordered factor
+  variable taking one of \eqn{L_{j}} levels, i.e., \eqn{Y_{ij} \in \{0,
+    1, \dots,
+  L_{j} - 1\}} where \eqn{L_{j} > 1}.  We assume that a greater value of
+  \eqn{Y_{ij}}
+  indicates a greater level of support for policy \eqn{j}.
+  We denote an \eqn{M} dimensional vector of the observed
+  characteristics of respondent \eqn{i} by \eqn{Z_i}.
+
+  In the experiment, we
+  randomly assign one of \eqn{K} political actors as an endorser to
+  respondent \eqn{i}'s question regarding policy \eqn{j} and denote this
+  treatment variable by \eqn{T_{ij} \in \{0,1,\dots,K\}}.  We use
+  \eqn{T_{ij}=0} to represent the control observations where no
+  political endorsement is attached to the question. Alternatively, one
+  may use the endorsement by a neutral actor as the control group.
+  
+  The model for the response variable, \eqn{Y_{ij}}, is given by,
+  \deqn{Y_{ij} = l \; {\rm if} \; \tau_{l} < Y^{*}_{ij} \le
+    \tau_{l + 1},
+  }{%
+    Y_ij = l if \tau_l < Ystar_ij \le \tau_(l+1),%
+  }
+  \deqn{Y^{*}_{ij} = - \alpha_{j} + \beta_{j} (x_{i} + s_{ij, T_{ij}}) +
+    \epsilon_{ij}
+  }{%
+    Ystar_ij = - \alpha_j + \beta_j (x_i + s_(ij, T_ij)) + \epsilon_ij%
+  }
+  \deqn{\epsilon_{ij} \sim \mathcal{N}(0, I)
+  }{%
+    \epsilon_ij ~ N(0, I)%
+  }
+  where \eqn{l \in \{0, 1, \dots, L_{j} \}, \tau_{0} = -\infty <
+    \tau_{1} = 0 < \tau_{2} < \dots < \tau_{L_{j}} = \infty}.
+  \eqn{\alpha_j} and \eqn{\beta_j} are assumed to be positive.
+
+  The model for the support parameter, \eqn{s_{ijk}}, is given by
+  if \eqn{T_{ij} \neq 0},
+  \deqn{
+    s_{ij, T_{ij}} \sim \mathcal{N}(Z_i^{T} \lambda_{j, T_{ij}}, \;
+  \omega_{j, T_{ij}}^2)
+  }{%
+    s_(ij, T_ij) ~ N(Z_i^T \lambda_(j, T_ij), \omega_(j, T_ij)^2)%
+  }
+  with covariates, and
+  \deqn{
+    s_{ij, T_{ij}} \sim \mathcal{N}(\lambda_{j, T_{ij}}, \; \omega_{j,
+      T_{ij}}^2),
+  }{%
+    s_(ij, T_ij) ~ N(\lambda_(j, T_ij), \omega_(j, T_ij)^2)%
+  }
+  without covariates, for \eqn{j = 1, \dots, J, \; k = 1, \dots, K},
+  and if \eqn{T_{ij} = 0, \; s_{ij, T_{ij}} = 0}{T_ij = 0, s_(ij, T_ij)
+    = 0}.
+
+  The \eqn{lambda}'s in the support parameter model are modelled in the
+  following hierarchical manner,
+  \deqn{
+    \lambda_{jk} \sim \mathcal{N}(\theta_k, \; \Phi_k)
+  }{%
+    \lambda_jk ~ N(\theta_k, \Phi_k)%
+  }  
+  for \eqn{k = 1, \dots, K}.
+
+  If the covariates are included in the model, the model for the
+  ideal points is given by
+  \deqn{
+    x_{i} \sim \mathcal{N}(Z_{i}^{T} \delta, \; \sigma_{x}^{2})
+  }{%
+    x_i ~ N(Z_i^T \delta, \sigma_x^2)%
+  }
+  for \eqn{i = 1, \dots, N} where \eqn{\sigma_x^2} is a known prior
+  variance.
+
+  Finally, the following independent prior distributions are placed on
+  unknown parameters,
+  \deqn{
+    \alpha_j \sim \mathcal{N}(\mu_\alpha, \; \sigma_\alpha^2)
+  }{%
+    \alpha_j ~ N(\mu_\alpha, \sigma_\alpha^2)%
+  }
+  for \eqn{j = 1, \dots, J},
+  \deqn{
+    \beta_j \sim \mathcal{N}(\mu_\beta, \; \sigma_\beta^2)
+  }{%
+    \beta_j ~ N(\mu_\beta, \sigma_\beta^2)%
+  }
+  for \eqn{j = 1, \dots, J},
+  \deqn{
+    \delta \sim \mathcal{N}(\mu_\delta, \; \Sigma_\delta),
+  }{%
+    \delta ~ N(\mu_\delta, \Sigma_\delta),%
+  }
+  \deqn{
+    \theta_k \sim \mathcal{N}(\mu_\theta, \; \Sigma_\theta)
+  }{%
+    \theta_k \sim \mathcal{N}(\mu_\theta, \Sigma_\theta)%
+  }
+  for \eqn{k = 1, \dots, K},
+  \deqn{
+    \omega_{jk}^2 \sim  {\rm Inv-}\chi^{2}(\nu_{\omega}^0, \;
+    s_{\omega}^0)
+  }{%
+    \omega_jk^2 ~ Inv-\chi^2(\nu_\omega^0, s_\omega^0)
+  }
+  for \eqn{j = 1, \dots, J} and \eqn{k = 1, \dots, K}, and
+  \deqn{  
+    {\rm diag}(\Phi_k) \sim  {\rm Inv-}\chi^{2}(\nu_{\Phi}^0, \;
+    s_{\Phi}^0)
+  }{%
+    diag(\Phi_k) ~ Inv-\chi^2(\nu_\Phi^0, s_\Phi^0)
+  }
+  for \eqn{k = 1, \dots, K}, where \eqn{\Phi_k} is assumed to be a
+  diagonal matrix.
+}
+
+\value{
+  A list containing the following elements:
+
+  \item{beta}{an mcmc object. A sample from the posterior distribution
+    of \eqn{\alpha}{alpha} and \eqn{\beta}{beta}.
+  }
+
+  \item{x}{If \code{x.sd = TRUE}, a vector of the standard deviation of
+    the ideal points in each draw. If \code{x.sd = FALSE}, an mcmc
+    object that contains a sample from the posterior distribution of the
+    ideal points.
+  }
+
+  \item{delta}{If \code{covariates = TRUE}, an mcmc object that contains
+    a sample from the posterior distribution of \eqn{\delta}{delta}.
+  }
+
+  \item{tau}{If \code{tau.out = TRUE}, an mcmc object that contains a
+    sample from the posterior distribution of \eqn{\tau}{tau}.
+  }
+
+  \item{lambda}{an mcmc object. A sample from the posterior distribution
+  of \eqn{\lambda}{lambda}.}
+
+  \item{theta}{an mcmc object. A sample from the posterior distribution
+    of \eqn{\theta}{theta}.
+  }
+}
+
+\references{
+  Bullock, Will, Kosuke Imai, and Jacob N. Shapiro. (2011)
+  \dQuote{Statistical Analysis of Endorsement Experiments: Measuring
+  Support for Militant Groups in Pakistan,} \emph{Political Analysis},
+  Vol. 19, No. 4 (Autumn), pp.363-384.
+}
+
+\examples{
+\dontrun{
+data(pakistan)
+
+Y <- list(Q1 = c("Polio.a", "Polio.b", "Polio.c", "Polio.d", "Polio.e"),
+          Q2 = c("FCR.a", "FCR.b", "FCR.c", "FCR.d", "FCR.e"),
+          Q3 = c("Durand.a", "Durand.b", "Durand.c", "Durand.d",
+                 "Durand.e"),
+          Q4 = c("Curriculum.a", "Curriculum.b", "Curriculum.c",
+                 "Curriculum.d", "Curriculum.e"))
+
+## Without covariates
+endorse.out <- endorse(Y = Y, data = pakistan)
+
+## With covariates
+cov.formula <- formula( ~ female + rural)
+endorse.cov.out <- endorse(Y = Y, data = pakistan, covariates = TRUE,
+                           formula = cov.formula)
+
+}
+}
+
+\author{
+  Kosuke Imai, Department of Politics, Princeton University
+  \email{kimai@Princeton.Edu}, \url{http://imai.princeton.edu}
+  and Yuki Shiraito, Department of Politics, Princeton University
+  \email{shiraito@Princeton.Edu}.
+}
+
