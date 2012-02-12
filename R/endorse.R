@@ -1,26 +1,26 @@
-endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
+endorse <- function(Y,
                     data,
-                    treat = NA, # Recommended: N * J matrix of treatment status
-                    na.strings = NA,
+                    treat = NA,
+                    na.strings = 99,
                     covariates = FALSE,
                     formula = NA,
-                    x.start = NA,  # scalar or vector of length N
-                    s.start = 0,  # scalar or N * J matrix
-                    beta.start = 1, # scalar or J * 2 matrix
-                    tau.start = NA,   # J * max(L_{j}) matrix
-                    lambda.start = 0, # scalar or (J * M) * K matrix
-                    omega2.start = 1, #scalar or J * K matrix
-                    theta.start = 0,   #scalar or vector of length K * M
-                    phi2.start = 1, # scalar or vector of length K * M
-                    delta.start = 0, # scalar or vector of length M
-                    mu.beta = 0, #scalar or J * 2 matrix
-                    mu.x = 0, # scalar or vector of length N
-                    mu.theta = 0, # scalar or vector of length M
-                    mu.delta = 0, # scalar or vector of length M
-                    precision.beta = 0.1, # scalar or 2 * 2 diagonal matrix
-                    precision.x = 1,    # scalar
-                    precision.theta = 0.1,# scalar or vector of length M
-                    precision.delta = 0.1, # scalar or M * M matrix
+                    x.start = 0,
+                    s.start = 0,
+                    beta.start = 1,
+                    tau.start = NA,
+                    lambda.start = 0,
+                    omega2.start = 1,
+                    theta.start = 0,
+                    phi2.start = 1,
+                    delta.start = 0,
+                    mu.beta = 0,
+                    mu.x = 0,
+                    mu.theta = 0,
+                    mu.delta = 0,
+                    precision.beta = 0.1,
+                    precision.x = 1,
+                    precision.theta = 0.1,
+                    precision.delta = 0.1,
                     s0.omega2= 1,
                     nu0.omega2 = 1,
                     s0.phi2 = 1,
@@ -32,7 +32,8 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
                     mh = TRUE,
                     prop = 0.001,
                     x.sd = TRUE,
-                    tau.out = FALSE
+                    tau.out = FALSE,
+                    verbose = TRUE
                     ) {
 
   if (covariates) {
@@ -51,7 +52,7 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
   N <- nrow(data)
   J <- length(Y)
   
-  response <- matrix(-1, nrow = N, ncol = J)
+  response <- matrix(NA, nrow = N, ncol = J)
   temp.Qs <- paste("Y$Q", 1:J, sep ="")
 
   if (is.na(treat[1])) {
@@ -60,9 +61,9 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
     endorse <- treat
   }
 
-  K <- rep(NA, times = J)  
+  K <- rep(NA, times = J)
   
-  if (is.na(na.strings)) {
+  if (is.na(na.strings[1])) {
     for (i in 1:J) {
       temp.group <- eval(parse(text = paste("length(", temp.Qs[i], ")", sep ="")))
       K[i] <- temp.group
@@ -87,13 +88,14 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
 
       for (j in 1:temp.group) {
         varname <- eval(parse(text = paste(temp.Qs[i], "[j]", sep = "")))
-        response[, i] <- eval(parse(text = paste("ifelse(data$", varname,
-                                      " != na.strings, data$", varname,
+        response[, i] <- eval(parse(text = paste("ifelse(!is.na(data$", varname,
+                                      ") & !(data$", varname,
+                                      " %in% na.strings), data$", varname,
                                       ", response[, i])", sep = "")))
 
         if (is.na(treat[1])) {
-          endorse[, i] <- eval(parse(text = paste("ifelse(data$", varname,
-                                        " != na.strings, j - 1, response[, i])",
+          endorse[, i] <- eval(parse(text = paste("ifelse(!is.na(data$", varname,
+                                        "), j - 1, endorse[, i])",
                                         sep = "")))
         }
       }
@@ -104,10 +106,14 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
     response[, i] <- as.integer(as.ordered(response[, i]))
   }
 
-  L <- apply(response, 2, max) - 1
+  L <- apply(response, 2, max, na.rm = TRUE)
   max.L <- max(L)
   
-  response <- response - 2
+  response <- response - 1
+
+  for (i in 1:J) {
+    response[, i] <- ifelse(is.na(response[, i]), -1, response[, i])
+  }
   
   if (is.na(treat[1])) {
     K <- max(K) - 1
@@ -127,9 +133,7 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
     }
   }
   
-  if (is.na(x.start)) {
-    x.start <- rnorm(N)
-  } else if (length(x.start) == 1) {
+  if (length(x.start) == 1) {
     x.start <- rep(x.start, times = N)
   }
 
@@ -185,13 +189,13 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
     precision.theta <- rep(precision.theta, times = M)
   }
 
-  accept <- 0
-  
+  if (length(prop) == 1) {
+    prop <- rep(prop, times = max.L)
+  }
+
   printout <- floor( (MCMC - burn) / thin )
 
   if (covariates) {
-    if (x.sd) {
-      if (tau.out) {
         temp <- .C("R2endorse",
                    as.integer(response),
                    as.integer(endorse),
@@ -202,14 +206,14 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
                    as.integer(K),
                    as.integer(L),
                    as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
+                   as.double(x.start),
+                   as.double(s.start),
                    as.double(beta.start),
                    as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
+                   as.double(lambda.start),
+                   as.double(omega2.start),
+                   as.double(theta.start),
+                   as.double(phi2.start),
                    as.double(delta.start),
                    as.double(mu.beta),
                    as.double(precision.beta),
@@ -228,164 +232,18 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
                    as.integer(mda),
                    as.integer(mh),
                    as.double(prop),
-                   as.integer(accept),
                    as.integer(x.sd),
                    as.integer(tau.out),
+                   as.integer(verbose),
                    betaStore = double(printout * 2 * J),
-                   tauStore = double(printout * (max(L)-1) * J),
-                   xStore = double(printout),
+                   tauStore = if (tau.out) double(printout * (max.L - 1) * J) else double(1),
+                   xStore = if (x.sd) double(printout) else double(printout * N),
                    lambdaStore = double(printout * J * M * K),
                    thetaStore = double(printout * K * M),
                    deltaStore = double(printout * M),
+                   accept.ratio = double(J),
                    package = "endorse")
-      } else {
-        temp <- .C("R2endorse",
-                   as.integer(response),
-                   as.integer(endorse),
-                   as.double(cov.mat),
-                   as.integer(N),
-                   as.integer(J),
-                   as.integer(M),
-                   as.integer(K),
-                   as.integer(L),
-                   as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
-                   as.double(beta.start),
-                   as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
-                   as.double(delta.start),
-                   as.double(mu.beta),
-                   as.double(precision.beta),
-                   as.double(precision.x),
-                   as.double(mu.theta),
-                   as.double(precision.theta),
-                   as.double(mu.delta),
-                   as.double(precision.delta),
-                   as.double(s0.omega2),
-                   as.integer(nu0.omega2),
-                   as.double(s0.phi2),
-                   as.integer(nu0.phi2),
-                   as.integer(MCMC),
-                   as.integer(burn),
-                   as.integer(thin),
-                   as.integer(mda),
-                   as.integer(mh),
-                   as.double(prop),
-                   as.integer(accept),
-                   as.integer(x.sd),
-                   as.integer(tau.out),
-                   betaStore = double(printout * 2 * J),
-                   tauStore = double(1),
-                   xStore = double(printout),
-                   lambdaStore = double(printout * J * M * K),
-                   thetaStore = double(printout * K * M),
-                   deltaStore = double(printout * M),
-                   package = "endorse")
-      }
-    } else {
-      if (tau.out) {
-        temp <- .C("R2endorse",
-                   as.integer(response),
-                   as.integer(endorse),
-                   as.double(cov.mat),
-                   as.integer(N),
-                   as.integer(J),
-                   as.integer(M),
-                   as.integer(K),
-                   as.integer(L),
-                   as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
-                   as.double(beta.start),
-                   as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
-                   as.double(delta.start),
-                   as.double(mu.beta),
-                   as.double(precision.beta),
-                   as.double(precision.x),
-                   as.double(mu.theta),
-                   as.double(precision.theta),
-                   as.double(mu.delta),
-                   as.double(precision.delta),
-                   as.double(s0.omega2),
-                   as.integer(nu0.omega2),
-                   as.double(s0.phi2),
-                   as.integer(nu0.phi2),
-                   as.integer(MCMC),
-                   as.integer(burn),
-                   as.integer(thin),
-                   as.integer(mda),
-                   as.integer(mh),
-                   as.double(prop),
-                   as.integer(accept),
-                   as.integer(x.sd),
-                   as.integer(tau.out),
-                   betaStore = double(printout * 2 * J),
-                   tauStore = double(printout * (max(L)-1) * J),
-                   xStore = double(printout * N),
-                   lambdaStore = double(printout * J * M * K),
-                   thetaStore = double(printout * K * M),
-                   deltaStore = double(printout * M),
-                   package = "endorse")
-      } else {
-        temp <- .C("R2endorse",
-                   as.integer(response),
-                   as.integer(endorse),
-                   as.double(cov.mat),
-                   as.integer(N),
-                   as.integer(J),
-                   as.integer(M),
-                   as.integer(K),
-                   as.integer(L),
-                   as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
-                   as.double(beta.start),
-                   as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
-                   as.double(delta.start),
-                   as.double(mu.beta),
-                   as.double(precision.beta),
-                   as.double(precision.x),
-                   as.double(mu.theta),
-                   as.double(precision.theta),
-                   as.double(mu.delta),
-                   as.double(precision.delta),
-                   as.double(s0.omega2),
-                   as.integer(nu0.omega2),
-                   as.double(s0.phi2),
-                   as.integer(nu0.phi2),
-                   as.integer(MCMC),
-                   as.integer(burn),
-                   as.integer(thin),
-                   as.integer(mda),
-                   as.integer(mh),
-                   as.double(prop),
-                   as.integer(accept),
-                   as.integer(x.sd),
-                   as.integer(tau.out),
-                   betaStore = double(printout * 2 * J),
-                   tauStore = double(1),
-                   xStore = double(printout * N),
-                   lambdaStore = double(printout * J * M * K),
-                   thetaStore = double(printout * K * M),
-                   deltaStore = double(printout * M),
-                   package = "endorse")
-      }
-    }
   } else {
-    if (x.sd) {
-      if (tau.out) {
         temp <- .C("R2endorseNoCov",
                    as.integer(response),
                    as.integer(endorse),
@@ -394,14 +252,14 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
                    as.integer(K),
                    as.integer(L),
                    as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
+                   as.double(x.start),
+                   as.double(s.start),
                    as.double(beta.start),
                    as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
+                   as.double(lambda.start),
+                   as.double(omega2.start),
+                   as.double(theta.start),
+                   as.double(phi2.start),
                    as.double(mu.beta),
                    as.double(precision.beta),
                    as.double(mu.x),
@@ -418,280 +276,113 @@ endorse <- function(Y, # = list(Q1 = c(VARIABLE NAMES), ...)
                    as.integer(mda),
                    as.integer(mh),
                    as.double(prop),
-                   as.integer(accept),
                    as.integer(x.sd),
                    as.integer(tau.out),
+                   as.integer(verbose),
                    betaStore = double(printout * 2 * J),
-                   tauStore = double(printout * (max(L)-1) * J),
-                   xStore = double(printout),
+                   tauStore = if (tau.out) double(printout * (max.L - 1) * J) else double(1),
+                   xStore = if (x.sd) double(printout) else double(printout * N),
                    lambdaStore = double(printout * J * M * K),
                    thetaStore = double(printout * K * M),
+                   accept.ratio = double(J),
                    package = "endorse")
-      } else {
-        temp <- .C("R2endorseNoCov",
-                   as.integer(response),
-                   as.integer(endorse),
-                   as.integer(N),
-                   as.integer(J),
-                   as.integer(K),
-                   as.integer(L),
-                   as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
-                   as.double(beta.start),
-                   as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
-                   as.double(mu.beta),
-                   as.double(precision.beta),
-                   as.double(mu.x),
-                   as.double(precision.x),
-                   as.double(mu.theta),
-                   as.double(precision.theta),
-                   as.double(s0.omega2),
-                   as.integer(nu0.omega2),
-                   as.double(s0.phi2),
-                   as.integer(nu0.phi2),
-                   as.integer(MCMC),
-                   as.integer(burn),
-                   as.integer(thin),
-                   as.integer(mda),
-                   as.integer(mh),
-                   as.double(prop),
-                   as.integer(accept),
-                   as.integer(x.sd),
-                   as.integer(tau.out),
-                   betaStore = double(printout * 2 * J),
-                   tauStore = double(1),
-                   xStore = double(printout),
-                   lambdaStore = double(printout * J * M * K),
-                   thetaStore = double(printout * K * M),
-                   package = "endorse")
-      }
-    } else {
-            if (tau.out) {
-        temp <- .C("R2endorseNoCov",
-                   as.integer(response),
-                   as.integer(endorse),
-                   as.integer(N),
-                   as.integer(J),
-                   as.integer(K),
-                   as.integer(L),
-                   as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
-                   as.double(beta.start),
-                   as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
-                   as.double(mu.beta),
-                   as.double(precision.beta),
-                   as.double(mu.x),
-                   as.double(precision.x),
-                   as.double(mu.theta),
-                   as.double(precision.theta),
-                   as.double(s0.omega2),
-                   as.integer(nu0.omega2),
-                   as.double(s0.phi2),
-                   as.integer(nu0.phi2),
-                   as.integer(MCMC),
-                   as.integer(burn),
-                   as.integer(thin),
-                   as.integer(mda),
-                   as.integer(mh),
-                   as.double(prop),
-                   as.integer(accept),
-                   as.integer(x.sd),
-                   as.integer(tau.out),
-                   betaStore = double(printout * 2 * J),
-                   tauStore = double(printout * (max(L)-1) * J),
-                   xStore = double(printout * N),
-                   lambdaStore = double(printout * J * M * K),
-                   thetaStore = double(printout * K * M),
-                   package = "endorse")
-      } else {
-        temp <- .C("R2endorseNoCov",
-                   as.integer(response),
-                   as.integer(endorse),
-                   as.integer(N),
-                   as.integer(J),
-                   as.integer(K),
-                   as.integer(L),
-                   as.integer(max.L),
-                   as.double(x.start),  # vector of length N
-                   as.double(s.start),  # N * J matrix
-                   as.double(beta.start),
-                   as.double(tau.start),
-                   as.double(lambda.start), # lambda
-                   as.double(omega2.start),  # omega
-                   as.double(theta.start),  # theta
-                   as.double(phi2.start),   #phi
-                   as.double(mu.beta),
-                   as.double(precision.beta),
-                   as.double(mu.x),
-                   as.double(precision.x),
-                   as.double(mu.theta),
-                   as.double(precision.theta),
-                   as.double(s0.omega2),
-                   as.integer(nu0.omega2),
-                   as.double(s0.phi2),
-                   as.integer(nu0.phi2),
-                   as.integer(MCMC),
-                   as.integer(burn),
-                   as.integer(thin),
-                   as.integer(mda),
-                   as.integer(mh),
-                   as.double(prop),
-                   as.integer(accept),
-                   as.integer(x.sd),
-                   as.integer(tau.out),
-                   betaStore = double(printout * 2 * J),
-                   tauStore = double(1),
-                   xStore = double(printout * N),
-                   lambdaStore = double(printout * J * M * K),
-                   thetaStore = double(printout * K * M),
-                   package = "endorse")
-      }
-    }
   }
 
   if (covariates) {
     if (tau.out) {
-      if (x.sd) {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout),
-                    tau = matrix(as.double(temp$tauStore), byrow = TRUE,
-                      ncol = (max.L-1)*J, nrow = printout),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                                        # covariates = TRUE, tau.out = TRUE
+      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
+                    ncol = 2*J, nrow = printout),
+                  tau = matrix(as.double(temp$tauStore), byrow = TRUE,
+                    ncol = (max.L-1)*J, nrow = printout),
+                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
                       nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout),
-                    delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
-                      ncol = M, nrow = printout))
-      } else {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout),
-                    tau = matrix(as.double(temp$tauStore), byrow = TRUE,
-                      ncol = (max.L-1)*J, nrow = printout),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout),
-                    delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
-                      ncol = M, nrow = printout))
-      }
+                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
+                    ncol = J * M * K, nrow = printout),
+                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
+                    ncol = K * M, nrow = printout),
+                  delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
+                    ncol = M, nrow = printout),
+                  accept.ratio = as.double(temp$accept.ratio))
     } else {
-      if (x.sd) {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout ),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                                        # covariates = TRUE, tau.out = FALSE
+      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
+                    ncol = 2*J, nrow = printout ),
+                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
                       nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout),
-                    delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
-                      ncol = M, nrow = printout))
-      } else {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout ),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout),
-                    delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
-                      ncol = M, nrow = printout))
-      }
+                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
+                    ncol = J * M * K, nrow = printout),
+                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
+                    ncol = K * M, nrow = printout),
+                  delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
+                    ncol = M, nrow = printout),
+                  accept.ratio = as.double(temp$accept.ratio))
     }
   } else {
     if (tau.out) {
-      if (x.sd) {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout ),
-                    tau = matrix(as.double(temp$tauStore), byrow = TRUE,
-                      ncol = (max.L-1)*J, nrow = printout),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                                        # covariates = FALSE, tau.out = TRUE
+      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
+                    ncol = 2*J, nrow = printout ),
+                  tau = matrix(as.double(temp$tauStore), byrow = TRUE,
+                    ncol = (max.L-1)*J, nrow = printout),
+                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
                       nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout))
-      } else {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout ),
-                    tau = matrix(as.double(temp$tauStore), byrow = TRUE,
-                      ncol = (max.L-1)*J, nrow = printout),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout))
-      }
+                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
+                    ncol = J * M * K, nrow = printout),
+                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
+                    ncol = K * M, nrow = printout),
+                  accept.ratio = as.double(temp$accept.ratio))
     } else {
-      if (x.sd) {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout ),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                                        # covariates = FALSE, tau.out = FALSE
+      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
+                    ncol = 2*J, nrow = printout ),
+                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
+                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
                       nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout))
-      } else {
-        res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                       ncol = 2*J, nrow = printout ),
-                    x = matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                    lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                      ncol = J * M * K, nrow = printout),
-                    theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                      ncol = K * M, nrow = printout))
-      }
+                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
+                    ncol = J * M * K, nrow = printout),
+                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
+                    ncol = K * M, nrow = printout),
+                  accept.ratio = as.double(temp$accept.ratio))
     }
   }
 
   colnames(res$beta) <- paste(rep(c("alpha", "beta"), times = J),
                               rep(1:J, each = 2), sep = ".")
-  res$beta <- as.mcmc(res$beta)
+  res$beta <- mcmc(res$beta, start = burn + 1, end = MCMC, thin = thin)
 
   if (tau.out) {
     temp.names <- paste("tau", 1:J, sep = "")
     colnames(res$tau) <- paste(rep(temp.names, each = (max.L - 1)),
                                rep(1:(max.L - 1), times = J), sep = ".")
-    res$tau <- as.mcmc(res$tau)
+    res$tau <- mcmc(res$tau, start = burn + 1, end = MCMC, thin = thin)
   }
 
   if (x.sd) {
     colnames(res$x) <- "sd.x"
   } else {
     colnames(res$x) <- paste("x", 1:N, sep = ".")
-    res$x <- as.mcmc(res$x)
+    res$x <- mcmc(res$x, start = burn + 1, end = MCMC, thin = thin)
   }
 
   temp.names <- paste("lambda", rep(1:J, each = K), rep(1:K, times = J), sep = "")
   colnames(res$lambda) <- paste(rep(temp.names, each = M), rep(1:M, times = (J * K)),
                                 sep = ".")
-  res$lambda <- as.mcmc(res$lambda)
+  res$lambda <- mcmc(res$lambda, start = burn + 1, end = MCMC, thin = thin)
   
   temp.names <- paste("theta", 1:K, sep = "")
   colnames(res$theta) <- paste(rep(temp.names, each = M), rep(1:M, times = K), sep = ".")
-  res$theta <- as.mcmc(res$theta)
+  res$theta <- mcmc(res$theta, start = burn + 1, end = MCMC, thin = thin)
 
   if (covariates) {
     colnames(res$delta) <- paste("delta", 1:M, sep = "")
-    res$delta <- as.mcmc(res$delta)
+    res$delta <- mcmc(res$delta, start = burn + 1, end = MCMC, thin = thin)
   }
+
+  names(res$accept.ratio) <- paste("Q", 1:J, sep = "")
 
   return(res)
 }

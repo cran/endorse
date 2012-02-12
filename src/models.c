@@ -400,7 +400,7 @@ void boprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
  ***/
 
 
-void bsupportoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
+void endorseoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
 					   dots, J-1 */
 			 double **X,    /* covariate matrix */
 			 double *beta,  /* coefficients */
@@ -510,7 +510,7 @@ void bsupportoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
       } else if (Y[i] < 0) {
 	W[i] = mean[i] + norm_rand();
       } else {
-	  W[i] = TruncNorm(tau[Y[i]-1],tau[Y[i]],mean[i],1,0);
+	W[i] = TruncNorm(tau[Y[i]-1],tau[Y[i]],mean[i],1,0);
       }
       if (!mh) {
 	Wmax[Y[i]] = fmax2(Wmax[Y[i]], W[i]);
@@ -570,9 +570,10 @@ void bsupportoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
 
     /* sampling taus without MH-step */
     if (!mh) { 
-      for (j = 1; j < n_cat-1; j++) 
+      for (j = 1; j < n_cat-1; j++) {
 	tau[j] = runif(fmax2(tau[j-1], Wmax[j]), 
 		       fmin2(tau[j+1], Wmin[j+1]));
+      }
       tau[n_cat-1] = tau[n_cat-2] + 1000;
     }
     R_FlushConsole(); 

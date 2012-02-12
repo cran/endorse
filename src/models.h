@@ -15,7 +15,7 @@ void boprobitMCMC(int *Y, double **X, double *beta,
 		  int prior, double *beta0, double **A0, int mda, 
 		  int mh, double *prop, int *accept, int n_gen);
 
-void bsupportoprobitMCMC(int *Y, double **X, double *beta, 
+void endorseoprobitMCMC(int *Y, double **X, double *beta, 
 			 double *tau, int n_samp, int n_cov, int n_cat, 
 			 int prior, double *beta0, double **A0, int mda, 
 			 int mh, double *prop, int *accept, int n_gen);

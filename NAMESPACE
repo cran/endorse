@@ -1,3 +1,5 @@
 useDynLib(endorse)
 
 export(endorse)
+
+export(endorse.plot)

@@ -14,10 +14,10 @@
 endorse(Y,
         data,
         treat = NA,
-        na.strings = NA,
+        na.strings = 99,
         covariates = FALSE,
         formula = NA,
-        x.start = NA,
+        x.start = 0,
         s.start = 0,
         beta.start = 1,
         tau.start = NA,
@@ -45,7 +45,8 @@ endorse(Y,
         mh = TRUE,
         prop = 0.001,
         x.sd = TRUE,
-        tau.out = FALSE)
+        tau.out = FALSE,
+        verbose = TRUE)
 }
 
 \arguments{
@@ -73,8 +74,12 @@ endorse(Y,
     The default is \code{NA}.
   }
   
-  \item{na.strings}{a scalar which are to be interpreted as \code{NA}
-    values.
+  \item{na.strings}{a scalar or a vector indicating the values of the
+    response variable that are to be interpreted as ``Don't Know'' or
+    ``Refused to Answer.'' The value should not be \code{NA} unless
+    \code{treat} is provided, because \code{NA}'s are interpreted as the
+    response to the question with another endorsement. Default is
+    \code{99}.
   }
 
   \item{covariates}{logical. If \code{TRUE}, the model includes
@@ -86,15 +91,11 @@ endorse(Y,
   }
 
   \item{x.start}{starting values for the ideal points vector \eqn{x}. If
-    \code{x.start} is \code{NA}, the function uses a sample of the same
-    size as the number of respondents from the normal distribution with
-    mean 0 and variance 1    
-    as the starting values for the ideal points. If
     \code{x.start} is set to a scalar, the starting values for the ideal
     points of all respondents will be set to the scalar. If
     \code{x.start} is a vector of the same length as the number of
     observations, then this vector will be used as the starting
-    values. The default is \code{NA}.
+    values. The default is \code{0}.
   }
 
   \item{s.start}{starting values for the support parameter, \eqn{s_ijk}.
@@ -291,8 +292,11 @@ endorse(Y,
     \code{TRUE}.
   }
 
-  \item{prop}{a positive number. The proposal variance for the
-  Metropolis-Hastings algorithm. The default is \code{0.001}.}
+  \item{prop}{a positive number or a vector consisting of positive
+  numbers. The length of the vector should be the same as the number of
+  questions. This argument sets proposal variance for the
+  Metropolis-Hastings algorithm in sampling the cut points of the
+  response model. The default is \code{0.001}.}
 
   \item{x.sd}{logical. If \code{TRUE}, The standard deviation of the
   ideal points in each draw will be stored. If \code{FALSE}, a sample of
@@ -302,10 +306,16 @@ endorse(Y,
   number of observations.}
   }
 
-  \item{tau.out}{a switch that determines whether or not to store the
-    cut points in the response model. The default is \code{FALSE}.
+  \item{tau.out}{logical. A switch that determines whether or not to
+    store the cut points in the response model. The default is
+    \code{FALSE}.
   }
-    
+
+  \item{verbose}{logical. A switch that determines whether or not to
+    print the progress of the chain and Metropolis acceptance ratios for
+    the cut points of the response model. The default is
+    \code{TRUE}.
+  }
 }
 
 \details{
@@ -340,14 +350,10 @@ endorse(Y,
   }{%
     Y_ij = l if \tau_l < Ystar_ij \le \tau_(l+1),%
   }
-  \deqn{Y^{*}_{ij} = - \alpha_{j} + \beta_{j} (x_{i} + s_{ij, T_{ij}}) +
-    \epsilon_{ij}
+  \deqn{Y^{*}_{ij} \; | \; T_{ij} = k \sim \mathcal{N}(- \alpha_{j} +
+    \beta_{j} (x_{i} + s_{ijk}), \; I)
   }{%
-    Ystar_ij = - \alpha_j + \beta_j (x_i + s_(ij, T_ij)) + \epsilon_ij%
-  }
-  \deqn{\epsilon_{ij} \sim \mathcal{N}(0, I)
-  }{%
-    \epsilon_ij ~ N(0, I)%
+    Ystar_ij | T_ij = k ~ N(- \alpha_j + \beta_j (x_i + s_(ij, T_ij)), I)%
   }
   where \eqn{l \in \{0, 1, \dots, L_{j} \}, \tau_{0} = -\infty <
     \tau_{1} = 0 < \tau_{2} < \dots < \tau_{L_{j}} = \infty}.
@@ -356,21 +362,18 @@ endorse(Y,
   The model for the support parameter, \eqn{s_{ijk}}, is given by
   if \eqn{T_{ij} \neq 0},
   \deqn{
-    s_{ij, T_{ij}} \sim \mathcal{N}(Z_i^{T} \lambda_{j, T_{ij}}, \;
-  \omega_{j, T_{ij}}^2)
+    s_{ijk} \sim \mathcal{N}(Z_i^{T} \lambda_{jk}, \; \omega_{jk}^2)
   }{%
-    s_(ij, T_ij) ~ N(Z_i^T \lambda_(j, T_ij), \omega_(j, T_ij)^2)%
+    s_ijk ~ N(Z_i^T \lambda_jk, \omega_jk^2)%
   }
   with covariates, and
   \deqn{
-    s_{ij, T_{ij}} \sim \mathcal{N}(\lambda_{j, T_{ij}}, \; \omega_{j,
-      T_{ij}}^2),
+    s_{ijk} \sim \mathcal{N}(\lambda_{jk}, \; \omega_{jk}^2),
   }{%
-    s_(ij, T_ij) ~ N(\lambda_(j, T_ij), \omega_(j, T_ij)^2)%
+    s_ijk ~ N(\lambda_jk, \omega_jk^2)%
   }
   without covariates, for \eqn{j = 1, \dots, J, \; k = 1, \dots, K},
-  and if \eqn{T_{ij} = 0, \; s_{ij, T_{ij}} = 0}{T_ij = 0, s_(ij, T_ij)
-    = 0}.
+  and if \eqn{T_{ij} = 0, \; s_{ijk} = 0}{T_ij = 0, s_ijk = 0}.
 
   The \eqn{lambda}'s in the support parameter model are modelled in the
   following hierarchical manner,
@@ -494,7 +497,8 @@ endorse.cov.out <- endorse(Y = Y, data = pakistan, covariates = TRUE,
 \author{
   Kosuke Imai, Department of Politics, Princeton University
   \email{kimai@Princeton.Edu}, \url{http://imai.princeton.edu}
-  and Yuki Shiraito, Department of Politics, Princeton University
+
+  Yuki Shiraito, Department of Politics, Princeton University
   \email{shiraito@Princeton.Edu}.
 }
 

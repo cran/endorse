@@ -60,18 +60,22 @@ void R2endorse(/*   Data   */
 		int *mda,        /* marginal data augmentation? */
 		int *mh,         /* Metropolis-Hasting step? */
 		double *prop,    /* proposal variance for MH step */
-		int *accept,     /* acceptance counter */
 		int *x_sd,       /* Output of x: sd if 1, sample if 0 */
 		int *tau_out,
+		int *verbose,
 		double *betaStore,
 		double *tauStore,
 		double *xStore,
 		double *lambdaStore,
 		double *thetaStore,
-		double *deltaStore
+		double *deltaStore,
+		double *accept_ratio
 		 ){
   /* loop counters */
-  int i, j, k, l, m, n, main_loop, itemp;
+  int i, j, k, l, m, n, main_loop, itemp, itempP, progress;
+  itempP = (int) ceil( (double) *n_gen / 10);
+  progress = 1;
+
   int ibeta = 0, itau = 0, ix = 0, ilambda = 0, itheta = 0, idelta = 0, keep = 1;
   double varx;
 
@@ -94,6 +98,10 @@ void R2endorse(/*   Data   */
   double *phi2_km = doubleArray(1);
   double *mu_theta = doubleArray(1);
   double *sig2_x = doubleArray(1);
+  int *accept = intArray(*n_pol);
+  for (j = 0; j < *n_pol; j++)
+    accept[j] = 0;
+  int *temp_accept = intArray(1);
 
   /* storage matrices */
   /** data **/
@@ -203,11 +211,16 @@ void R2endorse(/*   Data   */
 
   /* Gibbs Sampler */
   for (main_loop = 1; main_loop <= *n_gen; main_loop++) {
-    if (main_loop == 1)
-      Rprintf("Start Gibbs Sampler\n");
+    if (*verbose) {
+      if (main_loop == 1)
+	Rprintf("Start Gibbs Sampler\n");
 
-/*     if (main_loop % 100 == 0) */
-      Rprintf("%6d / %6d\n", main_loop, *n_gen);
+      if (main_loop  == itempP) {
+	Rprintf("%3d percent done.\n   Metropolis acceptance ratios\n",
+		progress * 10);
+      }
+    }
+
 
     /** start sampling alpha and beta **/
     for (j = 0; j < *n_pol; j++) {
@@ -238,12 +251,21 @@ void R2endorse(/*   Data   */
       for (l = 0; l < n_cat[j]; l++)
 	tau[l] = Tau[j][l];
 
+      
       /*** prior mean ***/
       for (m = 0; m < 2; m++)
 	mu_beta[m] = Mu_beta[j][m];
-      
-      bsupportoprobitMCMC(Y_j, U, beta, tau, *n_samp, 2, n_cat[j], 1,
-			  mu_beta, A0_beta, *mda, *mh, MHprop, accept, 1);
+
+      /*** set acceptance indicator to 0 ***/
+      temp_accept[0] = 0;
+
+      /*** draw posterior ***/
+      endorseoprobitMCMC(Y_j, U, beta, tau, *n_samp, 2, n_cat[j], 1,
+			  mu_beta, A0_beta, *mda, *mh, MHprop, temp_accept, 1);
+
+      /*** update acceptance counter ***/
+      accept[j] += temp_accept[0];
+      accept_ratio[j] = (double) accept[j] / (double) main_loop;
 
       /*** packing sampled alpha and beta ***/
       for (m = 0; m < 2; m++)
@@ -265,17 +287,24 @@ void R2endorse(/*   Data   */
 	    betaStore[ibeta++] = Beta[j][m];
 
 	  if (*tau_out) {
-	    for (l = 0; l < *max_n_cat-1; l++)
+	    for (l = 0; l < (*max_n_cat-1); l++)
 	      tauStore[itau++] = Tau[j][l];
 	  }
-
 	}
+      }
+      
+      /** print acceptance ratios  **/
+      if (*mh * *verbose) {
+	if (main_loop == itempP)
+	  Rprintf("      Cutpoints of question %1d: %4g\n",
+		  (j + 1), accept_ratio[j]);
       }
 
       R_FlushConsole();
       R_CheckUserInterrupt();
     } /** end of sampling alpha and beta **/
 
+    
 
     /** start sampling s **/
     for (i = 0; i < *n_samp; i++){
@@ -307,8 +336,8 @@ void R2endorse(/*   Data   */
       }
     }/** end of sampling s **/
 
-    /** start sampling x except the first and the last respondents **/
-    for (i = 1; i < (*n_samp-1); i++) {
+    /** start sampling x **/
+    for (i = 0; i < *n_samp; i++) {
 
       for (j = 0; j < *n_pol; j++) {
 	D_x[j][0] = Beta[j][1];
@@ -462,6 +491,7 @@ void R2endorse(/*   Data   */
     }
     /** end of sampling delta **/
 
+
     /** update thinning counter **/
     if (keep == *thin) {
       keep = 1;
@@ -469,10 +499,19 @@ void R2endorse(/*   Data   */
       keep++;
     }
 
+    /** update printing counter **/
+    if (*verbose) {
+      if (main_loop == itempP) {
+	progress += 1;
+	itempP = (int) ceil( (double) progress * *n_gen / 10);      
+      }
+    }
+
     R_FlushConsole();
     R_CheckUserInterrupt();
   } /* end of Gibbs sampler */
-  Rprintf("End Gibbs Sampler\n");
+  if (*verbose)
+    Rprintf("End Gibbs Sampler\n");
 
   PutRNGstate();
 
@@ -495,6 +534,8 @@ void R2endorse(/*   Data   */
   free(phi2_km);
   free(mu_theta);
   free(sig2_x);
+  free(accept);
+  free(temp_accept);
 
   FreeintMatrix(T, *n_samp);
   FreeintMatrix(Y, *n_samp);
@@ -568,17 +609,21 @@ void R2endorseNoCov(/*   Data   */
 		    int *mda,        /* marginal data augmentation? */
 		    int *mh,         /* Metropolis-Hasting step? */
 		    double *prop,    /* proposal variance for MH step */
-		    int *accept,     /* acceptance counter */
 		    int *x_sd,
 		    int *tau_out,
+		    int *verbose,
 		    double *betaStore,
 		    double *tauStore,
 		    double *xStore,
 		    double *lambdaStore,
-		    double *thetaStore
+		    double *thetaStore,
+		    double *accept_ratio
 		    ){
   /* loop counters */
-  int i, j, k, l, m, n, main_loop, itemp;
+  int i, j, k, l, m, n, main_loop, itemp, itempP, progress;
+  itempP = (int) ceil((double) *n_gen / 10);
+  progress = 1;
+
   int ibeta = 0, itau = 0, ix = 0, ilambda = 0, itheta = 0, keep = 1;
   double varx;
 
@@ -599,6 +644,10 @@ void R2endorseNoCov(/*   Data   */
   double *theta_k = doubleArray(1);
   double *phi2_k = doubleArray(1);
   double *mu_theta = doubleArray(1);
+  int *accept = intArray(*n_pol);
+  for (j = 0; j < *n_pol; j++)
+    accept[j] = 0;
+  int *temp_accept = intArray(1);
 
   /* storage matrices */
   /** data **/
@@ -686,11 +735,15 @@ void R2endorseNoCov(/*   Data   */
 
   /* Gibbs Sampler */
   for (main_loop = 1; main_loop <= *n_gen; main_loop++) {
-    if (main_loop == 1)
-      Rprintf("Start Gibbs Sampler\n");
+    if (*verbose) {
+      if (main_loop == 1)
+	Rprintf("Start Gibbs Sampler\n");
 
-    /*     if (main_loop % 100 == 0) */
-    Rprintf("%6d / %6d\n", main_loop, *n_gen);
+      if (main_loop == itempP)
+	Rprintf("%3d percent done.\n   Metropolis acceptance ratios\n",
+		progress * 10);
+    }
+
 
     /** start sampling alpha and beta **/
     for (j = 0; j < *n_pol; j++) {
@@ -700,7 +753,7 @@ void R2endorseNoCov(/*   Data   */
       double *MHprop = doubleArray(n_cat[j]-2);
 
       /*** proposal variance vector ***/
-      for (l = 0; l < n_cat[j]-2; l++)
+      for (l = 0; l < (n_cat[j] - 2); l++)
 	MHprop[l] = *prop;
 
       /*** response of each question ***/
@@ -724,9 +777,17 @@ void R2endorseNoCov(/*   Data   */
       /*** prior mean ***/
       for (m = 0; m < 2; m++)
 	mu_beta[m] = Mu_beta[j][m];
+
+      /*** set acceptance indicator to 0 ***/
+      temp_accept[0] = 0;
       
-      bsupportoprobitMCMC(Y_j, U, beta, tau, *n_samp, 2, n_cat[j], 1,
-			  mu_beta, A0_beta, *mda, *mh, MHprop, accept, 1);
+      /*** draw a posterior sample ***/
+      endorseoprobitMCMC(Y_j, U, beta, tau, *n_samp, 2, n_cat[j], 1,
+			 mu_beta, A0_beta, *mda, *mh, MHprop, temp_accept, 1);
+
+      /*** update acceptance counter ***/
+      accept[j] += temp_accept[0];
+      accept_ratio[j] = (double) accept[j] / (double) main_loop;
 
       /*** packing sampled alpha and beta ***/
       for (m = 0; m < 2; m++)
@@ -735,30 +796,35 @@ void R2endorseNoCov(/*   Data   */
       /*** packing sampled tau ***/
       for (l = 0; l < n_cat[j]; l++)
 	Tau[j][l] = tau[l];
-      
+
       /*** packing sampled latent random utility ***/
       for (i = 0; i < *n_samp; i++)
 	Ystar[i][j] = U[i][2];
 
       /*** storing alpha and beta ***/
-      if(main_loop > *burn) {
-	if(keep == *thin) {
+      if (main_loop > *burn) {
+	if (keep == *thin) {
 
 	  for (m = 0; m < 2; m++)
 	    betaStore[ibeta++] = Beta[j][m];
 
 	  if (*tau_out) {
-	    for (l = 0; l < *max_n_cat-1; l++)
+	    for (l = 0; l < (*max_n_cat - 1); l++)
 	      tauStore[itau++] = Tau[j][l];
 	  }
-
 	}
+      }
+
+      /*** print acceptance ratio ***/
+      if (*mh * *verbose) {
+      	if (main_loop == itempP)
+      	  Rprintf("      Cutpoints of question %1d: %4g\n",
+		  (j + 1), accept_ratio[j]);
       }
 
       R_FlushConsole();
       R_CheckUserInterrupt();
     } /** end of sampling alpha and beta **/
-
 
     /** start sampling s **/
     for (i = 0; i < *n_samp; i++){
@@ -787,8 +853,8 @@ void R2endorseNoCov(/*   Data   */
       }
     }/** end of sampling s **/
 
-    /** start sampling x except the first and the last respondents **/
-    for (i = 1; i < (*n_samp-1); i++) {
+    /** start sampling x **/
+    for (i = 0; i < *n_samp; i++) {
 
       for (j = 0; j < *n_pol; j++) {
 	D_x[j][0] = Beta[j][1];
@@ -821,7 +887,6 @@ void R2endorseNoCov(/*   Data   */
       }
     }
     /** end of sampling x **/
-
 
     /** start sampling lambda omega2 **/
     for (j = 0; j < *n_pol; j++) {
@@ -912,11 +977,19 @@ void R2endorseNoCov(/*   Data   */
       keep++;
     }
 
+    /** update printing counter **/
+    if (*verbose) {
+      if (main_loop == itempP){
+	progress += 1;
+	itempP = (int) ceil((double) progress * *n_gen / 10);
+      }
+    }
 
     R_FlushConsole();
     R_CheckUserInterrupt();
   } /* end of Gibbs sampler */
-  Rprintf("End Gibbs Sampler\n");
+  if (*verbose)
+    Rprintf("End Gibbs Sampler\n");
 
   PutRNGstate();
 
@@ -937,6 +1010,8 @@ void R2endorseNoCov(/*   Data   */
   free(theta_k);
   free(phi2_k);
   free(mu_theta);
+  free(accept);
+  free(temp_accept);
 
   FreeintMatrix(T, *n_samp);
   FreeintMatrix(Y, *n_samp);
