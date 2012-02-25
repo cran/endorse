@@ -62,10 +62,12 @@ void R2endorse(/*   Data   */
 		double *prop,    /* proposal variance for MH step */
 		int *x_sd,       /* Output of x: sd if 1, sample if 0 */
 		int *tau_out,
+		int *s_out,
 		int *verbose,
 		double *betaStore,
 		double *tauStore,
 		double *xStore,
+		double *sStore,
 		double *lambdaStore,
 		double *thetaStore,
 		double *deltaStore,
@@ -76,7 +78,7 @@ void R2endorse(/*   Data   */
   itempP = (int) ceil( (double) *n_gen / 10);
   progress = 1;
 
-  int ibeta = 0, itau = 0, ix = 0, ilambda = 0, itheta = 0, idelta = 0, keep = 1;
+  int ibeta = 0, itau = 0, ix = 0, ilambda = 0, itheta = 0, idelta = 0, is = 0, keep = 1;
   double varx;
 
   /* storage vectors */
@@ -329,6 +331,15 @@ void R2endorse(/*   Data   */
 
 	  /*** packing sampled s ***/
 	  S[i][j] = s[0];
+	}
+
+	/*** storing sampled s  ***/
+	if (*s_out) {
+	  if(main_loop > *burn) {
+	    if(keep == *thin) {
+	      sStore[is++] = S[i][j];
+	    }
+	  }
 	}
 
 	R_FlushConsole();
@@ -611,10 +622,12 @@ void R2endorseNoCov(/*   Data   */
 		    double *prop,    /* proposal variance for MH step */
 		    int *x_sd,
 		    int *tau_out,
+		    int *s_out,
 		    int *verbose,
 		    double *betaStore,
 		    double *tauStore,
 		    double *xStore,
+		    double *sStore,
 		    double *lambdaStore,
 		    double *thetaStore,
 		    double *accept_ratio
@@ -624,7 +637,7 @@ void R2endorseNoCov(/*   Data   */
   itempP = (int) ceil((double) *n_gen / 10);
   progress = 1;
 
-  int ibeta = 0, itau = 0, ix = 0, ilambda = 0, itheta = 0, keep = 1;
+  int ibeta = 0, itau = 0, ix = 0, ilambda = 0, itheta = 0, is = 0, keep = 1;
   double varx;
 
   /* storage vectors */
@@ -846,6 +859,16 @@ void R2endorseNoCov(/*   Data   */
 
 	  /*** packing sampled s ***/
 	  S[i][j] = s[0];
+	}
+
+
+	/*** storing sampled s  ***/
+	if (*s_out) {
+	  if(main_loop > *burn) {
+	    if(keep == *thin) {
+	      sStore[is++] = S[i][j];
+	    }
+	  }
 	}
 
 	R_FlushConsole();

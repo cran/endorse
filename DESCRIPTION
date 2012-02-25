@@ -1,6 +1,6 @@
 Package: endorse
-Version: 1.1
-Date: 2012-02-12
+Version: 1.2
+Date: 2012-02-25
 Title: R Package for Analyzing Endorsement Experiments
 Author: Yuki Shiraito <shiraito@princeton.edu>, Kosuke Imai
         <kimai@princeton.edu>
@@ -19,6 +19,6 @@ LazyLoad: yes
 LazyData: yes
 License: GPL (>= 2)
 URL: http://imai.princeton.edu/software/endorse.html
-Packaged: 2012-02-13 01:08:18 UTC; shiraito
+Packaged: 2012-02-25 19:34:26 UTC; shiraito
 Repository: CRAN
-Date/Publication: 2012-02-13 06:40:05
+Date/Publication: 2012-02-25 20:54:26

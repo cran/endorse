@@ -33,6 +33,7 @@ endorse <- function(Y,
                     prop = 0.001,
                     x.sd = TRUE,
                     tau.out = FALSE,
+                    s.out = FALSE,
                     verbose = TRUE
                     ) {
 
@@ -234,10 +235,12 @@ endorse <- function(Y,
                    as.double(prop),
                    as.integer(x.sd),
                    as.integer(tau.out),
+                   as.integer(s.out),
                    as.integer(verbose),
                    betaStore = double(printout * 2 * J),
                    tauStore = if (tau.out) double(printout * (max.L - 1) * J) else double(1),
                    xStore = if (x.sd) double(printout) else double(printout * N),
+                   sStore = if (s.out) double(printout * N * J) else double(1),
                    lambdaStore = double(printout * J * M * K),
                    thetaStore = double(printout * K * M),
                    deltaStore = double(printout * M),
@@ -278,77 +281,36 @@ endorse <- function(Y,
                    as.double(prop),
                    as.integer(x.sd),
                    as.integer(tau.out),
+                   as.integer(s.out),
                    as.integer(verbose),
                    betaStore = double(printout * 2 * J),
                    tauStore = if (tau.out) double(printout * (max.L - 1) * J) else double(1),
                    xStore = if (x.sd) double(printout) else double(printout * N),
+                   sStore = if (s.out) double(printout * N * J) else double(1),
                    lambdaStore = double(printout * J * M * K),
                    thetaStore = double(printout * K * M),
                    accept.ratio = double(J),
                    package = "endorse")
   }
 
-  if (covariates) {
-    if (tau.out) {
-                                        # covariates = TRUE, tau.out = TRUE
-      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                    ncol = 2*J, nrow = printout),
-                  tau = matrix(as.double(temp$tauStore), byrow = TRUE,
-                    ncol = (max.L-1)*J, nrow = printout),
-                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
-                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                    ncol = J * M * K, nrow = printout),
-                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                    ncol = K * M, nrow = printout),
-                  delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
-                    ncol = M, nrow = printout),
-                  accept.ratio = as.double(temp$accept.ratio))
-    } else {
-                                        # covariates = TRUE, tau.out = FALSE
-      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                    ncol = 2*J, nrow = printout ),
-                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
-                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                    ncol = J * M * K, nrow = printout),
-                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                    ncol = K * M, nrow = printout),
-                  delta = matrix(as.double(temp$deltaStore), byrow = TRUE,
-                    ncol = M, nrow = printout),
-                  accept.ratio = as.double(temp$accept.ratio))
-    }
-  } else {
-    if (tau.out) {
-                                        # covariates = FALSE, tau.out = TRUE
-      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                    ncol = 2*J, nrow = printout ),
-                  tau = matrix(as.double(temp$tauStore), byrow = TRUE,
-                    ncol = (max.L-1)*J, nrow = printout),
-                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
-                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                    ncol = J * M * K, nrow = printout),
-                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                    ncol = K * M, nrow = printout),
-                  accept.ratio = as.double(temp$accept.ratio))
-    } else {
-                                        # covariates = FALSE, tau.out = FALSE
-      res <- list(beta = matrix(as.double(temp$betaStore), byrow = TRUE,
-                    ncol = 2*J, nrow = printout ),
-                  x = if (x.sd) matrix(as.double(temp$xStore), byrow = TRUE, ncol = 1,
-                    nrow = printout) else matrix(as.double(temp$xStore), byrow = TRUE, ncol = N,
-                      nrow = printout),
-                  lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
-                    ncol = J * M * K, nrow = printout),
-                  theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
-                    ncol = K * M, nrow = printout),
-                  accept.ratio = as.double(temp$accept.ratio))
-    }
-  }
+  res <- list(beta = matrix(as.double(temp$betaStore),
+                byrow = TRUE, ncol = 2*J, nrow = printout),
+              tau = if (tau.out) matrix(as.double(temp$tauStore),
+                byrow = TRUE, ncol = (max.L-1)*J, nrow = printout) else NULL,
+              x = if (x.sd) matrix(as.double(temp$xStore),
+                byrow = TRUE, ncol = 1,
+                nrow = printout) else matrix(as.double(temp$xStore),
+                  byrow = TRUE, ncol = N, nrow = printout),
+              s = if (s.out) matrix(as.double(temp$sStore),
+                byrow = TRUE, ncol = N * J, nrow = printout) else NULL,
+              lambda = matrix(as.double(temp$lambdaStore), byrow = TRUE,
+                ncol = J * M * K, nrow = printout),
+              theta = matrix(as.double(temp$thetaStore), byrow = TRUE,
+                ncol = K * M, nrow = printout),
+              delta = if (covariates) matrix(as.double(temp$deltaStore), byrow = TRUE,
+                ncol = M, nrow = printout) else NULL,
+              accept.ratio = if (mh) as.double(temp$accept.ratio) else NULL)
+
 
   colnames(res$beta) <- paste(rep(c("alpha", "beta"), times = J),
                               rep(1:J, each = 2), sep = ".")
@@ -367,6 +329,12 @@ endorse <- function(Y,
     colnames(res$x) <- paste("x", 1:N, sep = ".")
     res$x <- mcmc(res$x, start = burn + 1, end = MCMC, thin = thin)
   }
+
+  if (s.out) {
+    colnames(res$s) <- paste("s", rep(1:nrow(data), each = J),
+                                     rep(1:J, times = nrow(data)), sep = "")
+  }
+
 
   temp.names <- paste("lambda", rep(1:J, each = K), rep(1:K, times = J), sep = "")
   colnames(res$lambda) <- paste(rep(temp.names, each = M), rep(1:M, times = (J * K)),

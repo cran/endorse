@@ -46,6 +46,7 @@ endorse(Y,
         prop = 0.001,
         x.sd = TRUE,
         tau.out = FALSE,
+        s.out = FALSE,
         verbose = TRUE)
 }
 
@@ -298,7 +299,7 @@ endorse(Y,
   Metropolis-Hastings algorithm in sampling the cut points of the
   response model. The default is \code{0.001}.}
 
-  \item{x.sd}{logical. If \code{TRUE}, The standard deviation of the
+  \item{x.sd}{logical. If \code{TRUE}, the standard deviation of the
   ideal points in each draw will be stored. If \code{FALSE}, a sample of
   the ideal points will be stored. \emph{NOTE: Because storing a sample
   takes an enormous amount of memory, this option should be
@@ -309,6 +310,14 @@ endorse(Y,
   \item{tau.out}{logical. A switch that determines whether or not to
     store the cut points in the response model. The default is
     \code{FALSE}.
+  }
+  
+  \item{s.out}{logical. If \code{TRUE}, the support parameter for each
+    respondent and each question will be stored.
+    The default is \code{FALSE}. \emph{NOTE: Because storing a sample
+    takes an enormous amount of memory, this option should be
+    selected only if the chain is thinned heavily or the data have a small
+    number of observations.}
   }
 
   \item{verbose}{logical. A switch that determines whether or not to
