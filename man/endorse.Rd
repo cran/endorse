@@ -11,43 +11,22 @@
   `Details'. See also Bullock et al. (2011).
 }
 \usage{
-endorse(Y,
-        data,
-        treat = NA,
-        na.strings = 99,
-        covariates = FALSE,
-        formula = NA,
-        x.start = 0,
-        s.start = 0,
-        beta.start = 1,
-        tau.start = NA,
-        lambda.start = 0,
-        omega2.start = 1,
-        theta.start = 0,
-        phi2.start = 1,
-        delta.start = 0,
-        mu.beta = 0,
-        mu.x = 0,
-        mu.theta = 0,
-        mu.delta = 0,
-        precision.beta = 0.1,
-        precision.x = 1,
-        precision.theta = 0.1,
-        precision.delta = 0.1,
-        s0.omega2= 1,
-        nu0.omega2 = 1,
-        s0.phi2 = 1,
-        nu0.phi2 = 1,
-        MCMC = 20000,
-        burn = 1000,
-        thin = 1,
-        mda = TRUE,
-        mh = TRUE,
-        prop = 0.001,
-        x.sd = TRUE,
-        tau.out = FALSE,
-        s.out = FALSE,
-        verbose = TRUE)
+endorse(Y, data, data.village = NA, village = NA, treat = NA,
+	na.strings = 99, identical.lambda = TRUE, covariates = FALSE,
+	 formula.indiv = NA, hierarchical = FALSE, formula.village = NA,
+	x.start = 0, s.start = 0, beta.start = 1,
+        tau.start = NA, lambda.start = 0, omega2.start = .1,
+        theta.start = 0, phi2.start = .1, kappa.start = 0,
+	psi2.start = 1, delta.start = 0, zeta.start = 0, rho2.start = 1,
+        mu.beta = 0, mu.x = 0, mu.theta = 0, mu.kappa = 0, mu.delta = 0,
+	mu.zeta = 0, precision.beta = 0.04, precision.x = 1, precision.theta = 0.04,
+	precision.kappa = 0.04, precision.delta = 0.04, precision.zeta = 0.04,
+	s0.omega2= .2, nu0.omega2 = 30, s0.phi2 = .2, nu0.phi2 = 30, s0.psi2 = .2,
+	nu0.psi2 = 30, s0.sig2 = 1, nu0.sig2 = 400, s0.rho2 = .2, nu0.rho2 = 30,	
+	MCMC = 20000, burn = 1000, thin = 1, mda = FALSE, mh = TRUE, prop = 0.001,
+	x.sd = TRUE, tau.out = FALSE, s.out = FALSE, omega2.out = TRUE, 
+	phi2.out = TRUE, psi2.out = TRUE, verbose = TRUE, seed.store = FALSE,
+        update = FALSE, update.start = NULL)
 }
 
 \arguments{
@@ -61,7 +40,14 @@ endorse(Y,
     only one variable name is provided for a question in this argument.
   }
 
-  \item{data}{data frame containing the variables.
+  \item{data}{data frame containing the individual-level variables.
+  }
+
+  \item{data.village}{data frame containing the village-level variables.
+  }
+
+  \item{village}{character.  The variable name of the village indicator
+    in the individual-level data.
   }
 
   \item{treat}{An optional matrix of non negative integers indicating
@@ -83,12 +69,26 @@ endorse(Y,
     \code{99}.
   }
 
-  \item{covariates}{logical. If \code{TRUE}, the model includes
-    individual-level covariates. The default is \code{FALSE}.}
+  \item{identical.lambda}{logical.  If \code{TRUE}, the model with a common
+    lambda across questions will be fitted.  THe default is \code{FALSE}.
+  }
 
-  \item{formula}{a symbolic description specifying the covariates for the
-    support parameter and the ideal points. The formula should be
-    one-sided, e.g. \code{ ~ Z1 + Z2}.
+  \item{covariates}{logical. If \code{TRUE}, the model includes
+    individual-level covariates. The default is \code{FALSE}.
+  }
+
+  \item{formula.indiv}{a symbolic description specifying the individual level 
+    covariates for the support parameter and the ideal points. The formula
+    should be one-sided, e.g. \code{ ~ Z1 + Z2}.
+  }
+
+  \item{hierarchical}{logical.  IF \code{TRUE}, the hierarchical model with
+    village level predictors will be fitted.  The default is \code{FALSE}.
+  }
+
+  \item{formula.village}{a symbolic description specifying the village level 
+    covariates for the support parameter and the ideal points. The formula
+    should be one-sided, e.g. \code{ ~ V1 + V2}.
   }
 
   \item{x.start}{starting values for the ideal points vector \eqn{x}. If
@@ -142,9 +142,10 @@ endorse(Y,
     If \code{lambda.start} is set to a scalar, the starting values for
     all coefficients will be the scalar.
     If \code{lambda.start} is set to a matrix, the number of rows should
-    be the number of questions times the dimension of covariates matrix,
-    and the number of columns should be the same as the number of
-    endorsers.
+    be the number of the individual level covariates (plus the number of villages, if the model
+    is hierarchical),
+    and the number of columns should be the number of
+    endorsers (times the number of questions, if the model is with varying lambdas).
     The default is \code{0}.
   }
 
@@ -157,15 +158,16 @@ endorse(Y,
     be the number of questions, 
     while the number of columns should be the same as the number of
     endorsers.
-    The default is \code{1}.
+    The default is \code{.1}.
   }
 
   \item{theta.start}{starting values for the means of the
     \eqn{\lambda_{jk}}{lambda_jk} for each endorser.
     If \code{theta.start} is set to a scalar, the starting values for
     all parameters will be the scalar.
-    If \code{theta.start} is set to a vector, the length should be the
-    number of endorsers times the dimension of covariates.
+    If \code{theta.start} is set to a matrix, the number of rows should
+    be the number of endorsers and the number of columns should be the
+    dimension of covariates.
     The default is \code{0}.
   }
 
@@ -178,16 +180,50 @@ endorse(Y,
     diagonal elements set to the scalar.
     If \code{phi2.start} is set to a vector, the length should be the
     number of endorsers times the dimension of covariates.
-    The default is \code{1}.
+    The default is \code{.1}.
   }
 
-  \item{delta.start}{starting values for the coefficients in the ideal
+  \item{kappa.start}{starting values for the coefficients on village level covariates in the
+    support parameter model, \eqn{\kappa_k}{kappa_k}.
+    If \code{kappa.start} is set to a scalar, the starting values for
+    all coefficients will be the scalar.
+    If \code{kappa.start} is set to a matrix, the number of rows should
+    be the number of the village level covariates,
+    and the number of columns should be the number of
+    endorsers.
+    The default is \code{0}.
+  }
+
+  \item{psi2.start}{starting values for the variance of the village random intercepts in the support
+    parameter model, \eqn{\psi_{k}^{2}}{psi_{k}^2}.
+    If \code{psi2.start} is set to a scalar, the starting values for
+    \eqn{\psi_{k}^{2}}{psi_{k}^2} will be the diagonal matrix with
+    the diagonal elements set to the scalar.
+    If \code{psi2.start} is set to a vector, its length should
+    be the number of endorsers.
+    The default is \code{.1}.
+  }
+
+  \item{delta.start}{starting values for the coefficients on individual level covariates in the ideal
     point model. Will be used only if \code{covariates = TRUE}.
     If \code{delta.start} is set to a scalar, the starting values for
     all coefficients will be the scalar.
     If \code{delta.start} is set to a vector, the length should be the
     dimension of covariates.
     The default is \code{0}.
+  }
+
+  \item{zeta.start}{starting values for the coefficients on village level covariates in the ideal
+    point model. Will be used only if \code{covariates = TRUE}.
+    If \code{zeta.start} is set to a scalar, the starting values for
+    all coefficients will be the scalar.
+    If \code{zeta.start} is set to a vector, the length should be the
+    dimension of covariates.
+    The default is \code{0}.
+  }
+
+  \item{rho2.start}{numeric. starting values for the variance of the village random intercepts in the ideal point
+    model, \eqn{\rho^{2}}{rho^2}. The default is \code{1}.
   }
 
   \item{mu.beta}{the mean of the independent Normal prior on the
@@ -209,8 +245,21 @@ endorse(Y,
     The default is \code{0}.
   }
 
+  \item{mu.kappa}{the mean of the independent Normal prior on the
+    coefficients of village level covariates. Can be either a scalar or a matrix of
+    dimension the number of covariates times the number of endorsers.
+    The default is \code{0}.
+  }
+
   \item{mu.delta}{the mean of the independent Normal prior on the
     the coefficients in the ideal point model.
+    Can be either a scalar or a vector of
+    the same length as the dimension of covariates.
+    The default is \code{0}.
+  }
+
+  \item{mu.zeta}{the mean of the independent Normal prior on the
+    the coefficients of village level covariates in the ideal point model.
     Can be either a scalar or a vector of
     the same length as the dimension of covariates.
     The default is \code{0}.
@@ -220,7 +269,7 @@ endorse(Y,
     independent Normal prior on the
     question related parameters. Can be either a scalar or
     a 2 \eqn{\times}{by} 2 diagonal matrix.
-    The default is \code{0.1}.
+    The default is \code{0.04}.
   }
 
   \item{precision.x}{scalar. The known precision of the
@@ -233,7 +282,14 @@ endorse(Y,
     independent Normal prior on the means of the coefficients
     in the support parameter model. Can be either a scalar or
     a vector of the same length as the dimension of covariates.
-    The default is \code{0.1}.
+    The default is \code{0.04}.
+  }
+
+  \item{precision.kappa}{the precisions of the
+    independent Normal prior on the coefficients of village level covariates
+    in the support parameter model. Can be either a scalar or
+    a vector of the same length as the dimension of covariates.
+    The default is \code{0.04}.
   }
 
   \item{precision.delta}{the precisions of the
@@ -241,26 +297,34 @@ endorse(Y,
     in the ideal point model. Can be either a scalar or
     a square matrix of the same dimension as the dimension of
     covariates.
-    The default is \code{0.1}.
+    The default is \code{0.04}.
+  }
+
+  \item{precision.zeta}{the precisions of the
+    independent Normal prior on the the coefficients of village level covariates
+    in the ideal point model. Can be either a scalar or
+    a square matrix of the same dimension as the dimension of
+    covariates.
+    The default is \code{0.04}.
   }
 
   \item{s0.omega2}{scalar. The scale of the independent scaled
     inverse- chi-squared    
     prior for the variance parameter in the support parameter model.
-    The default is \code{1}.
+    The default is \code{.2}.
   }
 
   \item{nu0.omega2}{scalar. The degrees of freedom of the independent
     scaled inverse-chi-squared    
     prior for the variance parameter in the support parameter model.
-    The default is \code{1}.
+    The default is \code{30}.
   }
 
   \item{s0.phi2}{scalar. The scale of the independent
     scaled inverse-chi-squared
     prior for the variances of the coefficients in
     the support parameter model.
-    The default is \code{1}.
+    The default is \code{.2}.
   }
 
   \item{nu0.phi2}{scalar. The degrees of freedom of the independent
@@ -268,7 +332,51 @@ endorse(Y,
     inverse-chi-squared
     prior for the variances of the coefficients in
     the support parameter model.
+    The default is \code{30}.
+  }
+
+  \item{s0.psi2}{scalar. The scale of the independent
+    scaled inverse-chi-squared
+    prior for the variances of the village random intercepts in
+    the support parameter model.
+    The default is \code{.2}.
+  }
+
+  \item{nu0.psi2}{scalar. The degrees of freedom of the independent
+    scaled
+    inverse-chi-squared
+    prior for the variances of the village random intercepts in
+    the support parameter model.
+    The default is \code{30}.
+  }
+
+  \item{s0.sig2}{scalar. The scale of the independent
+    scaled inverse-chi-squared
+    prior for the variance parameter in
+    the ideal point model.
     The default is \code{1}.
+  }
+
+  \item{nu0.sig2}{scalar. The degrees of freedom of the independent
+    scaled
+    inverse-chi-squared
+    prior for the variance parameter in the ideal point model.
+    The default is \code{400}.
+  }
+
+  \item{s0.rho2}{scalar. The scale of the independent
+    scaled inverse-chi-squared
+    prior for the variances of the village random intercepts in
+    the ideal point model.
+    The default is \code{.2}.
+  }
+
+  \item{nu0.rho2}{scalar. The degrees of freedom of the independent
+    scaled
+    inverse-chi-squared
+    prior for the variances of the village random intercepts in
+    the ideal point model.
+    The default is \code{30}.
   }
 
   \item{MCMC}{the number of iterations for the sampler. The default is
@@ -285,7 +393,7 @@ endorse(Y,
 
   \item{mda}{logical. If \code{TRUE}, the marginal data augmentation
     algorithm is used to sample the question related parameters,
-    \eqn{\alpha} and \eqn{\beta}. The default is \code{TRUE}.
+    \eqn{\alpha} and \eqn{\beta}. The default is \code{FALSE}.
   }
 
   \item{mh}{logical. If \code{TRUE}, the Metropolis-Hastings algorithm
@@ -320,10 +428,37 @@ endorse(Y,
     number of observations.}
   }
 
+  \item{omega2.out}{logical. If \code{TRUE}, the variannce parameter of the support
+    parameter model will be stored.
+    The default is \code{TRUE}.
+  }
+
+  \item{phi2.out}{logical. If \code{TRUE}, the variannce parameter of the model
+    for the coefficients in the support parameter model will be stored.
+    The default is \code{TRUE}.
+  }
+
+  \item{psi2.out}{logical. If \code{TRUE}, the variance of the village random intercepts 
+    in the support parameter model  will be stored.
+    The default is \code{TRUE}.
+  }
+
   \item{verbose}{logical. A switch that determines whether or not to
     print the progress of the chain and Metropolis acceptance ratios for
     the cut points of the response model. The default is
     \code{TRUE}.
+  }
+
+  \item{seed.store}{logical.  If \code{TRUE}, the seed will be stored in order
+    to update the chain later.  The default is \code{FALSE}.
+  }
+
+  \item{update}{logical.  If \code{TURE}, the function is run to update a chain.
+    The default is \code{FALSE}.
+  }
+
+  \item{update.start}{list.  If the function is run to update a chain, the output
+    object of the previous run should be supplied.  The default is \code{NULL}.
   }
 }
 
@@ -384,7 +519,7 @@ endorse(Y,
   without covariates, for \eqn{j = 1, \dots, J, \; k = 1, \dots, K},
   and if \eqn{T_{ij} = 0, \; s_{ijk} = 0}{T_ij = 0, s_ijk = 0}.
 
-  The \eqn{lambda}'s in the support parameter model are modelled in the
+  The \eqn{\lambda}'s in the support parameter model are modelled in the
   following hierarchical manner,
   \deqn{
     \lambda_{jk} \sim \mathcal{N}(\theta_k, \; \Phi_k)
@@ -393,6 +528,21 @@ endorse(Y,
   }  
   for \eqn{k = 1, \dots, K}.
 
+  If you set \code{identical.lambda = TRUE} and \code{hierarchical = TRUE},
+  the model is if \eqn{T_{ij} \neq 0},
+  \deqn{
+    s_{ijk} \sim \mathcal{N}(lambda^{0}_{village[i]} + Z_i^{T} \lambda_{k}, \; \omega_{k}^2)
+  }{%
+    s_ijk ~ N(\lambda^{0}_village[i] + Z_i^T \lambda_k, \omega_k^2)%
+  }
+  and
+  \deqn{
+    lambda^{0}_{village[i]} \sim \mathcal{N}(V_{village[i]}^{T} \kappa_{k}, \; \psi_{k}^2)
+  }{%
+    lambda^{0}_{village[i]} ~ N( V_village[i]^T \kappa_k, \psi_k^2)%
+  }
+  for \eqn{k = 1, \dots, K}.
+  
   If the covariates are included in the model, the model for the
   ideal points is given by
   \deqn{
@@ -458,6 +608,11 @@ endorse(Y,
     ideal points.
   }
 
+  \item{s}{If \code{s.out = TRUE}, an mcmc object that contains a sample
+    from the posterior distribution of \eqn{s_{ijk}}{s_ijk}.  Variable
+    names are \code{s(observation index)(question index)}.
+  }
+
   \item{delta}{If \code{covariates = TRUE}, an mcmc object that contains
     a sample from the posterior distribution of \eqn{\delta}{delta}.
   }
@@ -467,11 +622,20 @@ endorse(Y,
   }
 
   \item{lambda}{an mcmc object. A sample from the posterior distribution
-  of \eqn{\lambda}{lambda}.}
+    of \eqn{\lambda}{lambda}.  Variable names are \code{lambda(question
+      index)(group index).(covariate index)}.
+  }
 
   \item{theta}{an mcmc object. A sample from the posterior distribution
     of \eqn{\theta}{theta}.
   }
+
+  \item{kappa}{an mcmc object.
+  }
+
+  \item{zeta}{an mcmc object.
+  }
+
 }
 
 \references{

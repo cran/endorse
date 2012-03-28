@@ -1,5 +1,5 @@
 useDynLib(endorse)
 
-export(endorse)
+export(endorse, GeoCount)
 
 export(endorse.plot)

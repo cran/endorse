@@ -148,3 +148,17 @@ double var(double *X, int n, int unbiased)
 
   return temp;
 }
+
+double max(double *X, int n)
+{
+  int i;
+  double max;
+  
+  max = X[0];
+
+  for (i = 1; i < n; i++) {
+    if (max < X[i]) max = X[i];
+  }
+
+  return max;
+}

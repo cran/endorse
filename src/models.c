@@ -13,6 +13,19 @@
      Bayesian Normal Regression: see Chap.14 of Gelman et al. (2004) 
        both proper and improper priors (and their combinations)
        allowed for beta and sig2. 
+       Model: Y_i ~ N(X_i^T beta, sig2)
+       Prior: 
+         if conjugate = 1,
+           Prior for beta: p(beta | sig2) = N(beta | beta0, sig2 * A0)
+	   Prior for sig2: p(sig2) = inv-Chi2(sig2 | nu0, s0)
+	 if conjugate = 0 (semi-conjugate prior),
+	   Prior for beta: p(beta) = N(beta | beta0, A0^{-1})
+	   Prior for sig2: p(sig2) = inv-Chi2(sig2 | nu0, s0)
+       If conjugate = 1, sig2 is sampled from its marginal
+      and beta is sampled from its conditional given sig2.
+       If conjugate = 0, beta is updated using its conditional given
+      sig2 and sig2 is updated using its conditional given beta.
+      In this case, the starting value of sig2 must be provided.
 ***/
 void bNormalReg(double **D,    /* data [X Y] */
 		double *beta,  /* coefficients */
@@ -34,20 +47,51 @@ void bNormalReg(double **D,    /* data [X Y] */
 			       */
 		double s0,     /* prior scale for InvChi2 */
 		int nu0,       /* prior d.f. for InvChi2 */
-		int sig2fixed  /* 1: sig2 fixed, 0: sig2 sampled */ 
+		int sig2fixed,  /* 1: sig2 fixed, 0: sig2 sampled */
+		int conjugate
 		) {
   /* model parameters */
   double **SS = doubleMatrix(n_cov+1, n_cov+1); /* matrix folders for SWEEP */
   double *mean = doubleArray(n_cov);            /* means for beta */
   double **V = doubleMatrix(n_cov, n_cov);      /* variances for beta */
   double **mtemp = doubleMatrix(n_cov, n_cov);
+  double temp;
+
+  /* slice sampler */
+  double f, y;
+  double w;
+  w = .1;
+  int m;
+  m = 100;
+  
+  double L, R;
+  int J, K;
+
+  double x;
 
   /* storage parameters and loop counters */
   int i, j, k;  
 
+  /* if semi-conjugate model, divide y and X by sig2 */
+  if (pbeta) {
+    if (!conjugate) {
+      for (i = 0; i < n_samp; i++){
+	for (j = 0; j <= n_cov; j++) {
+	  D[i][j] /= sqrt(sig2[0]);
+	}
+      }
+    }
+  }
+
   /* read the proper prior for beta as additional data points */
   if (addprior) {
-    dcholdc(A0, n_cov, mtemp);
+    if (pbeta) {
+      dcholdc(A0, n_cov, mtemp);
+    } else {
+      for (i = 0; i < n_cov; i++)
+	for (j = 0; j < n_cov; j++)
+	  mtemp[i][j] = 0;
+    }
     for(i = 0; i < n_cov; i++) {
       D[n_samp+i][n_cov] = 0;
       for(j = 0; j < n_cov; j++) {
@@ -56,37 +100,142 @@ void bNormalReg(double **D,    /* data [X Y] */
       }
     }
   } 
-  
+
   /* SS matrix */
-  for(j = 0; j <= n_cov; j++)
-    for(k = 0; k <= n_cov; k++)
+  for(j = 0; j <= n_cov; j++) {
+    for(k = 0; k <= n_cov; k++) {
       SS[j][k]=0;
-  for(i = 0;i < n_samp + n_cov; i++)
-    for(j = 0;j <= n_cov; j++)
-      for(k = 0; k <= n_cov; k++) 
+    }
+  }
+  for(i = 0;i < n_samp + n_cov; i++) {
+    for(j = 0;j <= n_cov; j++) {
+      for(k = 0; k <= n_cov; k++) {
 	SS[j][k] += D[i][j]*D[i][k];
+      }
+    }
+  }
+  
+  /* if semi-conjugate model, y and X are scaled back*/
+  if (pbeta) {
+    if (!conjugate) {
+      for (i = 0; i < n_samp; i++){
+	for (j = 0; j <= n_cov; j++) {
+	  D[i][j] *= sqrt(sig2[0]);
+	}
+      }
+    }
+  }
+  
   
   /* SWEEP SS matrix */
   for(j = 0; j < n_cov; j++)
     SWP(SS, j, n_cov+1);
 
-  /* draw sig2 from its marginal dist */
-  for(j = 0; j < n_cov; j++)
-    mean[j] = SS[j][n_cov];
-  if (!sig2fixed) {
-    if (psig2) {  /* proper prior for sig2 */
-      if (pbeta)   /* proper prior for beta */
-	sig2[0]=(SS[n_cov][n_cov]+nu0*s0)/rchisq((double)n_samp+nu0);
-       else        /* improper prior for beta */
-	sig2[0]=(n_samp*SS[n_cov][n_cov]/(n_samp-n_cov)+nu0*s0)/rchisq((double)n_samp+nu0);
-    } else         /* improper prior for sig2 */
-      sig2[0]=SS[n_cov][n_cov]/rchisq((double)n_samp-n_cov);
+  if (pbeta) {
+    if (!conjugate) {/* semi-conjugate prior case.
+			prior for beta is proper */
+
+      for(j = 0; j < n_cov; j++)
+	mean[j] = SS[j][n_cov];
+
+      /* draw beta from its conditional given sig2 */
+      for(j = 0; j < n_cov; j++)
+	for(k = 0; k < n_cov; k++)
+	  V[j][k] = -SS[j][k];
+
+      rMVN(beta, mean, V, n_cov);
+
+      /* draw sig2 from its conditional given beta */
+      /** sum of squared residuals  **/
+      SS[n_cov][n_cov] = 0;
+      for (i = 0; i < n_samp; i++) {
+	temp = 0;
+	for (j = 0; j < n_cov; j++) {
+	  temp += D[i][j] * beta[j];
+	}
+	SS[n_cov][n_cov] += (D[i][n_cov] - temp) * (D[i][n_cov] - temp);
+      }
+
+      /* draw sig2 */
+      if (!sig2fixed) {
+	if (psig2) {
+	  sig2[0] = ( SS[n_cov][n_cov] + nu0 * s0) / rchisq((double)n_samp+nu0);
+	} else {
+	  if (n_samp > 8) { /* if the inverse Chi-squared distribution is proper,
+			       sample sig2 from the truncated inverse Chi-squared */
+	    sig2[0] = TruncInvChisq(n_samp - 2, SS[n_cov][n_cov] / (n_samp - 2), 10, 0);
+
+	  } else { /* if the inverse Chi-squared distribution is improper */
+	    /* slice sampler code with prior for sig2 being sig2^{-1} with support [0, 10]  */
+	    f = pow(sig2[0], - (double)(n_samp / 2)) * exp(- SS[n_cov][n_cov] / (2 * sig2[0]));
+	    y = runif(0, f);
+	    /** "stepping out" procedure **/
+	    L = sig2[0] - w * runif(0, 1);
+	    if (L < 0) L = 0;
+	    R = L + w;
+	    if (R > 10) R = 10;
+	    J = floor(m * runif(0, 1));
+	    K = (m - 1) - J;
+	    f = pow(L, - (double)(n_samp / 2)) * exp(- SS[n_cov][n_cov] / (2 * L));
+	    while (J > 0 && y < f && L > 0) {
+	      L = L - w;
+	      if (L < 0) {
+		L = 0;
+		break;
+	      }
+	      J = J - 1;
+	      f = pow(L, - (double)(n_samp / 2)) * exp(- SS[n_cov][n_cov] / (2 * L));
+	    }
+	    f = pow(R, - (double)(n_samp / 2)) * exp(- SS[n_cov][n_cov] / (2 * R));
+	    while (K > 0 && y < f && R < 10) {
+	      R = R + w;
+	      if (R > 10) {
+		R = 10;
+		break;
+	      }
+	      K = K - 1;
+	      f = pow(R, - (double)(n_samp / 2)) * exp(- SS[n_cov][n_cov] / (2 * R));
+	    }
+	    /** "shrinkage" procedure **/
+	    do {
+	      x = runif(L, R);
+	      f = pow(x, - (double)(n_samp / 2)) * exp(- SS[n_cov][n_cov] / (2 * x));
+	      if (x < sig2[0]) {
+		L = x;
+	      } else {
+		R = x;
+	      }
+	    } while (y > f);
+	    sig2[0] = x;
+	  }
+
+	}
+      }
+    
+    }
   }
 
-  /* draw beta from its conditional given sig2 */
-  for(j = 0; j < n_cov; j++)
-    for(k = 0; k < n_cov; k++) V[j][k]=-SS[j][k]*sig2[0];
-  rMVN(beta, mean, V, n_cov);
+  if (!pbeta || conjugate) { /*  conjugate case or improper prior for beta */
+
+    /* draw sig2 from its marginal dist */
+    for(j = 0; j < n_cov; j++)
+      mean[j] = SS[j][n_cov];
+    if (!sig2fixed) {
+      if (psig2) {  /* proper prior for sig2 */
+	if (pbeta)   /* proper prior for beta */
+	  sig2[0]=(SS[n_cov][n_cov]+nu0*s0)/rchisq((double)n_samp+nu0);
+	else        /* improper prior for beta */
+	  sig2[0]=(n_samp*SS[n_cov][n_cov]/(n_samp-n_cov)+nu0*s0)/rchisq((double)n_samp+nu0);
+      } else         /* improper prior for sig2 */
+	sig2[0]=SS[n_cov][n_cov]/rchisq((double)n_samp-n_cov);
+    }
+
+    /* draw beta from its conditional given sig2 */
+    for(j = 0; j < n_cov; j++)
+      for(k = 0; k < n_cov; k++) V[j][k]=-SS[j][k]*sig2[0];
+    rMVN(beta, mean, V, n_cov);
+
+  }
 
   /* freeing memory */
   free(mean);
@@ -94,6 +243,127 @@ void bNormalReg(double **D,    /* data [X Y] */
   FreeMatrix(V, n_cov);
   FreeMatrix(mtemp, n_cov);
 }
+
+
+/* /\***  Don't use. Obsolete */
+/*      Bayesian Normal Regression for "endorse" */
+/*        see Chap.14 of Gelman et al. (2004)  */
+/*        both proper and improper priors (and their combinations) */
+/*        allowed for beta and sig2. */
+/* ***\/ */
+/* void endorsebNormalReg(double **D,    /\* data [X Y] *\/ */
+/* 		       double *beta,  /\* coefficients *\/ */
+/* 		       double *sig2,  /\* variance *\/ */
+/* 		       int n_samp,    /\* sample size *\/ */
+/* 		       int n_cov,     /\* # of covariates *\/ */
+/* 		       int addprior,  /\* Should prior on beta be incorporated */
+/* 					 into D? *\/ */
+/* 		       int pbeta,     /\* Is prior proper for beta? *\/ */
+/* 		       double *beta0, /\* prior mean for normal *\/ */
+/* 		       double **A0,   /\* prior precision for normal; can be */
+/* 					 set to zero to induce improper prior */
+/* 					 for beta alone */
+/* 				      *\/ */
+/* 		       int psig2,     /\* 0: improper prior for sig2 */
+/* 					 p(sig2|X) \propto 1/sig2 */
+/* 					 1: proper prior for sig2 */
+/* 					 p(sigma2|X) = InvChi2(nu0, s0) */
+/* 				      *\/ */
+/* 		       double s0,     /\* prior scale for InvChi2 *\/ */
+/* 		       int nu0,       /\* prior d.f. for InvChi2 *\/ */
+/* 		       int sig2fixed  /\* 1: sig2 fixed, 0: sig2 sampled *\/  */
+/* 		       ) { */
+/*   /\* model parameters *\/ */
+/*   double **SS = doubleMatrix(n_cov+1, n_cov+1); /\* matrix folders for SWEEP *\/ */
+/*   double *mean = doubleArray(n_cov);            /\* means for beta *\/ */
+/*   double **V = doubleMatrix(n_cov, n_cov);      /\* variances for beta *\/ */
+/*   double **mtemp = doubleMatrix(n_cov, n_cov); */
+
+/*   /\* storage parameters and loop counters *\/ */
+/*   int i, j, k;   */
+
+
+
+/*   /\* read the proper prior for beta as additional data points *\/ */
+/*   if (addprior) { */
+/*     dcholdc(A0, n_cov, mtemp); */
+/*     for(i = 0; i < n_cov; i++) { */
+/*       D[n_samp+i][n_cov] = 0; */
+/*       for(j = 0; j < n_cov; j++) { */
+/* 	D[n_samp+i][n_cov] += mtemp[i][j]*beta0[j]; */
+/* 	D[n_samp+i][j] = mtemp[i][j]; */
+/*       } */
+/*     } */
+/*   }  */
+
+/* /\*   PdoubleMatrix(D, n_samp + 1, n_cov + 1); *\/ */
+  
+/*   /\* SS matrix *\/ */
+/*   for(j = 0; j <= n_cov; j++) { */
+/*     for(k = 0; k <= n_cov; k++) { */
+/*       SS[j][k]=0; */
+/*     } */
+/*   } */
+/*   for(i = 0;i < n_samp + n_cov; i++) { */
+/*     for(j = 0;j <= n_cov; j++) { */
+/*       for(k = 0; k <= n_cov; k++) { */
+/* 	SS[j][k] += D[i][j]*D[i][k]; */
+/*       } */
+/*     } */
+/*   } */
+  
+/* /\*   Rprintf("n_samp %3d \n", n_samp); *\/ */
+
+/* /\*   Rprintf("Sweep matrix %3g \n", SS[n_cov][n_cov]); *\/ */
+  
+  
+/*   /\* SWEEP SS matrix *\/ */
+/*   for(j = 0; j < n_cov; j++) */
+/*     SWP(SS, j, n_cov+1); */
+
+
+/* /\*   /\\* check scale parameters *\\/ *\/ */
+/* /\*   Rprintf("Prior df %3d, Prior scale %3g, Sweep %3g \n", *\/ */
+/* /\* 	  nu0, s0, SS[n_cov][n_cov]); *\/ */
+
+
+/*   /\* draw sig2 from its marginal dist *\/ */
+/*   for(j = 0; j < n_cov; j++) */
+/*     mean[j] = SS[j][n_cov]; */
+/*   if (!sig2fixed) { */
+/*     if (psig2) {  /\* proper prior for sig2 *\/ */
+/*       if (pbeta) {  /\* proper prior for beta *\/ */
+/* 	sig2[0] = TruncInvChisq((n_samp + nu0), */
+/* 				((SS[n_cov][n_cov]+nu0*s0) /  */
+/* 				 ((double)(n_samp + nu0))), */
+/* 				10, 0); */
+/* 	Rprintf("degrees of freedom %3d\n", (n_samp + nu0)); */
+/* 	Rprintf("scale %5g\n", ((SS[n_cov][n_cov]+nu0*s0) / ((double)(n_samp + nu0)))); */
+/* 	Rprintf("sampled phi2: %5g\n", sig2[0]); */
+/* 	/\*** Prior is U[0, 10] ***\/ */
+/* /\* 	sig2[0] = TruncInvChisq((n_samp - n_cov), *\/ */
+/* /\* 				(SS[n_cov][n_cov] / ((double)(n_samp - n_cov))), *\/ */
+/* /\* 				10); *\/ */
+/*       } else {       /\* improper prior for beta *\/ */
+/* 	sig2[0]=(n_samp*SS[n_cov][n_cov]/(n_samp-n_cov)+nu0*s0)/rchisq((double)n_samp+nu0); */
+/*       } */
+/*     } else {        /\* improper prior for sig2 *\/ */
+/*       sig2[0]=SS[n_cov][n_cov]/rchisq((double)n_samp-n_cov); */
+/*     } */
+/*   } */
+
+/*   /\* draw beta from its conditional given sig2 *\/ */
+/*   for(j = 0; j < n_cov; j++) */
+/*     for(k = 0; k < n_cov; k++) V[j][k]=-SS[j][k]*sig2[0]; */
+/*   rMVN(beta, mean, V, n_cov); */
+
+/*   /\* freeing memory *\/ */
+/*   free(mean); */
+/*   FreeMatrix(SS, n_cov+1); */
+/*   FreeMatrix(V, n_cov); */
+/*   FreeMatrix(mtemp, n_cov); */
+/* } */
+
 
 
 /*** 
@@ -216,8 +486,8 @@ void bprobitGibbs(int *Y,        /* binary outcome variable */
    Marginal Data Augmentation for updating coefficients: 
    p.318 of Imai and van Dyk (2005) Journal of Econometrics.
    Prior mean for beta will be set to zero. 
-   Improper prior allowed (set A0 to be a matrix of zeros).
-   
+   Improper prior allowed (set A0 to be a matrix of zeros). 
+  
    Metropolis-Hasting Blocking Step for updating cutpoints:
    Cowles (1996). Statistics and Computing
    
@@ -442,6 +712,8 @@ void endorseoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
   int nu0; nu0 = 1;
   double s0; s0 = 1;
 
+/*   PdoubleMatrix(A0, n_cov, n_cov); */
+
   /* read the prior as additional data points */
   if (prior) {
     dcholdc(A0, n_cov, mtemp);
@@ -523,15 +795,26 @@ void endorseoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
     for(j = 0; j <= n_cov; j++)
       for(k = 0; k <= n_cov; k++)
 	SS[j][k]=0;
+
     for(i = 0; i < n_samp+n_cov; i++)
       for(j = 0; j <= n_cov; j++)
 	for(k = 0; k <= n_cov; k++) 
 	  SS[j][k] += X[i][j]*X[i][k];
+
+
+/*     PdoubleMatrix(X, n_samp + n_cov, n_cov); */
+/*     Rprintf("Oprobit Sweep matrix %3g \n", SS[n_cov][n_cov]); */
+
     
     /* SWEEP SS matrix */
     for(j = 0; j < n_cov; j++)
       SWP(SS, j, n_cov+1);
     
+/*     /\* check scale parameters *\/ */
+/*     Rprintf("Prior df %3g, Prior scale %3g, Sweep %3g \n", */
+/* 	    nu0, s0, SS[n_cov][n_cov]); */
+
+
     /* draw beta */    
     for(j = 0; j < n_cov; j++)
       mbeta[j] = SS[j][n_cov];
@@ -549,13 +832,26 @@ void endorseoprobitMCMC(int *Y,        /* ordinal outcome variable: 0, 1,
 /*       Rprintf("\n"); */
 /*     } */
 
+/*     Rprintf("Mean of alpha                  %14g\n", mbeta[0]); */
+/*     Rprintf("Variance of the marginal alpha %14g\n", V[0][0]); */
 
     beta[0] = mbeta[0] + norm_rand()*sqrt(V[0][0]);
 /*     Rprintf("   Sampled alpha: %5g\n", beta[0]); */
+
+/*     Rprintf("Sampled alpha                  %14g\n", beta[0]); */
+
+
+/*     Rprintf("Mean of beta                   %14g\n", (mbeta[1] + (V[0][1] / V[0][0])*(beta[0] - mbeta[0]))); */
+/*     Rprintf("Variance of conditional beta   %14g\n", (V[1][1] - (V[0][1]*V[0][1] / V[0][0]))); */
     
     beta[1] = TruncNorm(0, 10000,
-			mbeta[1] + (V[0][1] / V[0][0])*(beta[0] - mbeta[0]),
+			(mbeta[1] + (V[0][1] / V[0][0])*(beta[0] - mbeta[0])),
 			V[1][1] - (V[0][1]*V[0][1] / V[0][0]), 0);
+
+/*     Rprintf("Sampled beta                   %14g\n", beta[1]); */
+
+/*     Rprintf("sig2                           %14g\n", sig2); */
+
 /*     Rprintf("   Sampled beta: %5g\n", beta[1]); */
 
 /*     rMVN(beta, mbeta, V, n_cov); */
@@ -681,264 +977,264 @@ void logitMetro(int *Y,        /* outcome variable: 0, 1, ..., J-1 */
 
 
 
-/*** 
-   A Standard Gibbs Sampler for Normal Mixed Effects Regression
+/* /\*** */
+/*    A Standard Gibbs Sampler for Normal Mixed Effects Regression */
 
-   MODEL: Y_i = X_i \beta + Z_i \gamma_i + \epsilon_i 
-          where 
-          \epsilon_i  \sim N(0, \sigma^2 I_{n_i})
-          \gamma_i \sim N(0, \Psi^{-1})
-          and i indexes groups.
-   PRIOR: p(\beta|X, Z) = N(beta_0, A_0^{-1})
-          p(\Psi^{-1}|X, Z) = Wish(\tau_0, T_0)
-          p(\sigma^2|X, Z) = InvChi2(\nu_0, s_0)
+/*    MODEL: Y_i = X_i \beta + Z_i \gamma_i + \epsilon_i */
+/*           where */
+/*           \epsilon_i  \sim N(0, \sigma^2 I_{n_i}) */
+/*           \gamma_i \sim N(0, \Psi^{-1}) */
+/*           and i indexes groups. */
+/*    PRIOR: p(\beta|X, Z) = N(beta_0, A_0^{-1}) */
+/*           p(\Psi^{-1}|X, Z) = Wish(\tau_0, T_0) */
+/*           p(\sigma^2|X, Z) = InvChi2(\nu_0, s_0) */
 
-	  standard diffuse improper priro (imp = 1 && A0 = 0)
-	  p(\beta, log\sigma, \Psi|X, Z) \propto |\Psi|^{-1/2}
-	  The posterior is proper so long as (see van Dyk, 2000, JCGS) 
-             n_samp > n_fixed + n_random 
-             n_grp > 2 n_random - 1 
-***/ 
+/* 	  standard diffuse improper priro (imp = 1 && A0 = 0) */
+/* 	  p(\beta, log\sigma, \Psi|X, Z) \propto |\Psi|^{-1/2} */
+/* 	  The posterior is proper so long as (see van Dyk, 2000, JCGS) */
+/*              n_samp > n_fixed + n_random */
+/*              n_grp > 2 n_random - 1 */
+/* ***\/ */
 
-void bNormalMixedGibbs(double *Y,       /* outcome variable */
-		       double **X,      /* model matrix for fixed
-					   effects */
-		       double ***Zgrp,  /* model matrix for random
-					   effects organized by
-					   grous */
-		       int *grp,        /* group indicator: 0, 1, 2,... */
-		       double *beta,    /* fixed effects coefficients */
-		       double **gamma,  /* random effects coefficients */
-		       double *sig2,    /* variance parameter */
-		       double **Psi,    /* precision matrix for random
-					   effects */
-		       int n_samp,      /* # of obs */ 
-		       int n_fixed,     /* # of fixed effects */
-		       int n_random,    /* # of random effects */
-		       int n_grp,       /* # of groups */
-		       int prior,       /* include prior for fixed effects in X? */
-		       double *beta0,   /* prior mean */
-		       double **A0,     /* prior precision */
-		       int imp,         /* use standard improper prior
-					   for sig2 and Psi
-					   (see above; beta can be proper) */
-		       int nu0,         /* prior df for sig2 */
-		       double s0,       /* prior scale for sig2 */
-		       int tau0,        /* prior df for Psi */
-		       double **T0,     /* prior scale for Psi */
-		       int n_gen        /* # of gibbs draws */
-		       ) {
+/* void bNormalMixedGibbs(double *Y,       /\* outcome variable *\/ */
+/* 		       double **X,      /\* model matrix for fixed */
+/* 					   effects *\/ */
+/* 		       double ***Zgrp,  /\* model matrix for random */
+/* 					   effects organized by */
+/* 					   grous *\/ */
+/* 		       int *grp,        /\* group indicator: 0, 1, 2,... *\/ */
+/* 		       double *beta,    /\* fixed effects coefficients *\/ */
+/* 		       double **gamma,  /\* random effects coefficients *\/ */
+/* 		       double *sig2,    /\* variance parameter *\/ */
+/* 		       double **Psi,    /\* precision matrix for random */
+/* 					   effects *\/ */
+/* 		       int n_samp,      /\* # of obs *\/ */
+/* 		       int n_fixed,     /\* # of fixed effects *\/ */
+/* 		       int n_random,    /\* # of random effects *\/ */
+/* 		       int n_grp,       /\* # of groups *\/ */
+/* 		       int prior,       /\* include prior for fixed effects in X? *\/ */
+/* 		       double *beta0,   /\* prior mean *\/ */
+/* 		       double **A0,     /\* prior precision *\/ */
+/* 		       int imp,         /\* use standard improper prior */
+/* 					   for sig2 and Psi */
+/* 					   (see above; beta can be proper) *\/ */
+/* 		       int nu0,         /\* prior df for sig2 *\/ */
+/* 		       double s0,       /\* prior scale for sig2 *\/ */
+/* 		       int tau0,        /\* prior df for Psi *\/ */
+/* 		       double **T0,     /\* prior scale for Psi *\/ */
+/* 		       int n_gen        /\* # of gibbs draws *\/ */
+/* 		       ) { */
   
-  double *gamma0 = doubleArray(n_random);           /* prior mean for gamma */
-  double **V = doubleMatrix(n_fixed, n_fixed);      /* variances for beta */
-  double **mtemp = doubleMatrix(n_random, n_random);
-  double **mtemp1 = doubleMatrix(n_random, n_random);
+/*   double *gamma0 = doubleArray(n_random);           /\* prior mean for gamma *\/ */
+/*   double **V = doubleMatrix(n_fixed, n_fixed);      /\* variances for beta *\/ */
+/*   double **mtemp = doubleMatrix(n_random, n_random); */
+/*   double **mtemp1 = doubleMatrix(n_random, n_random); */
 
-  /* storage parameters and loop counters */
-  int i, j, k, l, main_loop;  
-  int *vitemp = intArray(n_grp);
+/*   /\* storage parameters and loop counters *\/ */
+/*   int i, j, k, l, main_loop; */
+/*   int *vitemp = intArray(n_grp); */
   
-  /* read the prior as additional data points */
-  if (prior) {
-    dcholdc(A0, n_fixed, V);
-    for(i = 0; i < n_fixed; i++) {
-      X[n_samp+i][n_fixed] = 0;
-      for(j = 0; j < n_fixed; j++) {
-	X[n_samp+i][n_fixed] += V[i][j]*beta0[j];
-	X[n_samp+i][j] = V[i][j];
-      }
-    }
-  }
+/*   /\* read the prior as additional data points *\/ */
+/*   if (prior) { */
+/*     dcholdc(A0, n_fixed, V); */
+/*     for(i = 0; i < n_fixed; i++) { */
+/*       X[n_samp+i][n_fixed] = 0; */
+/*       for(j = 0; j < n_fixed; j++) { */
+/* 	X[n_samp+i][n_fixed] += V[i][j]*beta0[j]; */
+/* 	X[n_samp+i][j] = V[i][j]; */
+/*       } */
+/*     } */
+/*   } */
 
-  for (j = 0; j < n_random; j++)
-    gamma0[j] = 0;
+/*   for (j = 0; j < n_random; j++) */
+/*     gamma0[j] = 0; */
 
-  /* Gibbs Sampler! */
-  for(main_loop = 1; main_loop <= n_gen; main_loop++){
-    /** STEP 1: Sample Fixed Effects Given Random Effects 
-                Also Sample Variance Parameter **/
-    for (j = 0; j < n_grp; j++)
-      vitemp[j] = 0;
-    for (i = 0; i < n_samp; i++) {
-      X[i][n_fixed] = Y[i];
-      for (j = 0; j < n_random; j++)
-	X[i][n_fixed] -= Zgrp[grp[i]][vitemp[grp[i]]][j]*gamma[grp[i]][j];
-      vitemp[grp[i]]++;
-    }
-    if (imp)
-      bNormalReg(X, beta, sig2, n_samp, n_fixed, 0, 1, beta0, A0, 0, 1,
-		 1, 0);
-    else
-      bNormalReg(X, beta, sig2, n_samp, n_fixed, 0, 1, beta0, A0, 1, s0,
-		 nu0, 0);
+/*   /\* Gibbs Sampler! *\/ */
+/*   for(main_loop = 1; main_loop <= n_gen; main_loop++){ */
+/*     /\** STEP 1: Sample Fixed Effects Given Random Effects */
+/*                 Also Sample Variance Parameter **\/ */
+/*     for (j = 0; j < n_grp; j++) */
+/*       vitemp[j] = 0; */
+/*     for (i = 0; i < n_samp; i++) { */
+/*       X[i][n_fixed] = Y[i]; */
+/*       for (j = 0; j < n_random; j++) */
+/* 	X[i][n_fixed] -= Zgrp[grp[i]][vitemp[grp[i]]][j]*gamma[grp[i]][j]; */
+/*       vitemp[grp[i]]++; */
+/*     } */
+/*     if (imp) */
+/*       bNormalReg(X, beta, sig2, n_samp, n_fixed, 0, 1, beta0, A0, 0, 1, */
+/* 		 1, 0); */
+/*     else */
+/*       bNormalReg(X, beta, sig2, n_samp, n_fixed, 0, 1, beta0, A0, 1, s0, */
+/* 		 nu0, 0); */
 
-    /** STEP 2: Update Random Effects Given Fixed Effects **/
-    for (j = 0; j < n_grp; j++)
-      vitemp[j] = 0;
-    for (i = 0; i < n_samp; i++) {
-      Zgrp[grp[i]][vitemp[grp[i]]][n_random] = Y[i];
-      for (j = 0; j < n_fixed; j++) 
-	Zgrp[grp[i]][vitemp[grp[i]]][n_random] -= X[i][j]*beta[j]; 
-      vitemp[grp[i]]++;
-    }
-    for (j = 0; j < n_grp; j++)
-      bNormalReg(Zgrp[j], gamma[j], sig2, vitemp[j], n_random,
-		 1, 1, gamma0, Psi, 0, 0, 1, 1);
+/*     /\** STEP 2: Update Random Effects Given Fixed Effects **\/ */
+/*     for (j = 0; j < n_grp; j++) */
+/*       vitemp[j] = 0; */
+/*     for (i = 0; i < n_samp; i++) { */
+/*       Zgrp[grp[i]][vitemp[grp[i]]][n_random] = Y[i]; */
+/*       for (j = 0; j < n_fixed; j++) */
+/* 	Zgrp[grp[i]][vitemp[grp[i]]][n_random] -= X[i][j]*beta[j]; */
+/*       vitemp[grp[i]]++; */
+/*     } */
+/*     for (j = 0; j < n_grp; j++) */
+/*       bNormalReg(Zgrp[j], gamma[j], sig2, vitemp[j], n_random, */
+/* 		 1, 1, gamma0, Psi, 0, 0, 1, 1); */
 
-    /** STEP 3: Update Covariance Matrix Given Random Effects **/
-    for (j = 0; j < n_random; j++)
-      for (k = 0; k < n_random; k++)
-	if (imp)
-	  mtemp[j][k] = 0;
-	else
-	  mtemp[j][k] = T0[j][k];
-    for (j = 0; j < n_grp; j++)
-      for (k = 0; k < n_random; k++)
-	for (l = 0; l < n_random; l++)
-	  mtemp[k][l] += gamma[j][k]*gamma[j][l];
-    dinv(mtemp, n_random, mtemp1);
-    if (imp)
-      rWish(Psi, mtemp1, n_grp-n_random-1, n_random);
-    else
-      rWish(Psi, mtemp1, tau0+n_grp, n_random);
+/*     /\** STEP 3: Update Covariance Matrix Given Random Effects **\/ */
+/*     for (j = 0; j < n_random; j++) */
+/*       for (k = 0; k < n_random; k++) */
+/* 	if (imp) */
+/* 	  mtemp[j][k] = 0; */
+/* 	else */
+/* 	  mtemp[j][k] = T0[j][k]; */
+/*     for (j = 0; j < n_grp; j++) */
+/*       for (k = 0; k < n_random; k++) */
+/* 	for (l = 0; l < n_random; l++) */
+/* 	  mtemp[k][l] += gamma[j][k]*gamma[j][l]; */
+/*     dinv(mtemp, n_random, mtemp1); */
+/*     if (imp) */
+/*       rWish(Psi, mtemp1, n_grp-n_random-1, n_random); */
+/*     else */
+/*       rWish(Psi, mtemp1, tau0+n_grp, n_random); */
 
-    R_CheckUserInterrupt();
-  } /* end of Gibbs sampler */
+/*     R_CheckUserInterrupt(); */
+/*   } /\* end of Gibbs sampler *\/ */
 
-  /* freeing memory */
-  free(gamma0);
-  FreeMatrix(V, n_fixed);
-  FreeMatrix(mtemp, n_random);
-  FreeMatrix(mtemp1, n_random);
-  free(vitemp);
-}
+/*   /\* freeing memory *\/ */
+/*   free(gamma0); */
+/*   FreeMatrix(V, n_fixed); */
+/*   FreeMatrix(mtemp, n_random); */
+/*   FreeMatrix(mtemp1, n_random); */
+/*   free(vitemp); */
+/* } */
 
 
 
-/*** 
-   A Standard Gibbs Sampler for Binary Probit Mixed Effects Regression
+/* /\***  */
+/*    A Standard Gibbs Sampler for Binary Probit Mixed Effects Regression */
 
-   MODEL: Y_{ij} = 1 if W_{ij} > 0 
-                 = 0 otherwise.
-          W_i = X_i \beta + Z_i \gamma_i + \epsilon_i 
-          where 
-          \epsilon_i  \sim N(0, I_{n_i})
-          \gamma_i \sim N(0, \Psi^{-1})
-          and i indexes groups.
-   PRIOR: p(\beta|X, Z) = N(beta_0, A_0^{-1})
-          p(\Psi^{-1}|X,Z) = Wish(\tau_0, T_0)
-   see the docs for bprobitGibbs for the implmentation of marginal
-          data augmentation for fixed effects coefficients       
-***/ 
+/*    MODEL: Y_{ij} = 1 if W_{ij} > 0  */
+/*                  = 0 otherwise. */
+/*           W_i = X_i \beta + Z_i \gamma_i + \epsilon_i  */
+/*           where  */
+/*           \epsilon_i  \sim N(0, I_{n_i}) */
+/*           \gamma_i \sim N(0, \Psi^{-1}) */
+/*           and i indexes groups. */
+/*    PRIOR: p(\beta|X, Z) = N(beta_0, A_0^{-1}) */
+/*           p(\Psi^{-1}|X,Z) = Wish(\tau_0, T_0) */
+/*    see the docs for bprobitGibbs for the implmentation of marginal */
+/*           data augmentation for fixed effects coefficients        */
+/* ***\/  */
 
-void bprobitMixedGibbs(int *Y,          /* binary outcome variable */
-		       double **X,      /* model matrix for fixed
-					   effects */
-		       double ***Zgrp,  /* model matrix for random
-					   effects organized by grous */
-		       int *grp,        /* group indicator: 0, 1, 2,... */
-		       double *beta,    /* fixed effects coefficients */
-		       double **gamma,  /* random effects coefficients */
-		       double **Psi,    /* precision matrix for random
-					   effects */
-		       int n_samp,      /* # of obs */ 
-		       int n_fixed,     /* # of fixed effects */
-		       int n_random,    /* # of random effects */
-		       int n_grp,       /* # of groups */
-		       int prior,       /* include prior for fixed effects in X? */
-		       double *beta0,   /* prior mean */
-		       double **A0,     /* prior precision */
-		       int tau0,        /* prior df */
-		       double **T0,     /* prior scale */
-		       int n_gen        /* # of gibbs draws */
-		       ) {
+/* void bprobitMixedGibbs(int *Y,          /\* binary outcome variable *\/ */
+/* 		       double **X,      /\* model matrix for fixed */
+/* 					   effects *\/ */
+/* 		       double ***Zgrp,  /\* model matrix for random */
+/* 					   effects organized by grous *\/ */
+/* 		       int *grp,        /\* group indicator: 0, 1, 2,... *\/ */
+/* 		       double *beta,    /\* fixed effects coefficients *\/ */
+/* 		       double **gamma,  /\* random effects coefficients *\/ */
+/* 		       double **Psi,    /\* precision matrix for random */
+/* 					   effects *\/ */
+/* 		       int n_samp,      /\* # of obs *\/  */
+/* 		       int n_fixed,     /\* # of fixed effects *\/ */
+/* 		       int n_random,    /\* # of random effects *\/ */
+/* 		       int n_grp,       /\* # of groups *\/ */
+/* 		       int prior,       /\* include prior for fixed effects in X? *\/ */
+/* 		       double *beta0,   /\* prior mean *\/ */
+/* 		       double **A0,     /\* prior precision *\/ */
+/* 		       int tau0,        /\* prior df *\/ */
+/* 		       double **T0,     /\* prior scale *\/ */
+/* 		       int n_gen        /\* # of gibbs draws *\/ */
+/* 		       ) { */
   
-  double *gamma0 = doubleArray(n_random);           /* prior mean for gamma */
-  double **V = doubleMatrix(n_fixed, n_fixed);      /* variances for beta */
-  double *W = doubleArray(n_samp);
-  double **mtemp = doubleMatrix(n_random, n_random);
-  double **mtemp1 = doubleMatrix(n_random, n_random);
+/*   double *gamma0 = doubleArray(n_random);           /\* prior mean for gamma *\/ */
+/*   double **V = doubleMatrix(n_fixed, n_fixed);      /\* variances for beta *\/ */
+/*   double *W = doubleArray(n_samp); */
+/*   double **mtemp = doubleMatrix(n_random, n_random); */
+/*   double **mtemp1 = doubleMatrix(n_random, n_random); */
 
-  /* storage parameters and loop counters */
-  int i, j, k, l, main_loop;  
-  int *vitemp = intArray(n_grp);
-  double dtemp0, dtemp1;
-  double *vdtemp = doubleArray(1);
-  vdtemp[0] = 1.0;
+/*   /\* storage parameters and loop counters *\/ */
+/*   int i, j, k, l, main_loop;   */
+/*   int *vitemp = intArray(n_grp); */
+/*   double dtemp0, dtemp1; */
+/*   double *vdtemp = doubleArray(1); */
+/*   vdtemp[0] = 1.0; */
   
-  /* read the prior as additional data points */
-  if (prior) {
-    dcholdc(A0, n_fixed, V);
-    for(i = 0; i < n_fixed; i++) {
-      X[n_samp+i][n_fixed] = 0;
-      for(j = 0; j < n_fixed; j++) {
-	X[n_samp+i][n_fixed] += V[i][j]*beta0[j];
-	X[n_samp+i][j] = V[i][j];
-      }
-    }
-  }
+/*   /\* read the prior as additional data points *\/ */
+/*   if (prior) { */
+/*     dcholdc(A0, n_fixed, V); */
+/*     for(i = 0; i < n_fixed; i++) { */
+/*       X[n_samp+i][n_fixed] = 0; */
+/*       for(j = 0; j < n_fixed; j++) { */
+/* 	X[n_samp+i][n_fixed] += V[i][j]*beta0[j]; */
+/* 	X[n_samp+i][j] = V[i][j]; */
+/*       } */
+/*     } */
+/*   } */
 
-  for (j = 0; j < n_random; j++)
-    gamma0[j] = 0;
+/*   for (j = 0; j < n_random; j++) */
+/*     gamma0[j] = 0; */
 
-  /* Gibbs Sampler! */
-  for(main_loop = 1; main_loop <= n_gen; main_loop++){
-    /** STEP 1: Sample Latent Variable **/
-    for (j = 0; j < n_grp; j++)
-      vitemp[j] = 0;
-    for (i = 0; i < n_samp; i++){
-      dtemp0 = 0; dtemp1 = 0;
-      for (j = 0; j < n_fixed; j++) 
-	dtemp0 += X[i][j]*beta[j]; 
-      for (j = 0; j < n_random; j++)
-	dtemp1 += Zgrp[grp[i]][vitemp[grp[i]]][j]*gamma[grp[i]][j];
-      if(Y[i] == 0) 
-	W[i] = TruncNorm(dtemp0+dtemp1-1000,0,dtemp0+dtemp1,1,0);
-      else 
-	W[i] = TruncNorm(0,dtemp0+dtemp1+1000,dtemp0+dtemp1,1,0);
-      X[i][n_fixed] = W[i]-dtemp1;
-      vitemp[grp[i]]++;
-    }
-    /** STEP 2: Sample Fixed Effects Given Random Effects **/
-    bNormalReg(X, beta, vdtemp, n_samp, n_fixed, 0, 1, beta0, A0, 0, 1,
-	       1, 1);
+/*   /\* Gibbs Sampler! *\/ */
+/*   for(main_loop = 1; main_loop <= n_gen; main_loop++){ */
+/*     /\** STEP 1: Sample Latent Variable **\/ */
+/*     for (j = 0; j < n_grp; j++) */
+/*       vitemp[j] = 0; */
+/*     for (i = 0; i < n_samp; i++){ */
+/*       dtemp0 = 0; dtemp1 = 0; */
+/*       for (j = 0; j < n_fixed; j++)  */
+/* 	dtemp0 += X[i][j]*beta[j];  */
+/*       for (j = 0; j < n_random; j++) */
+/* 	dtemp1 += Zgrp[grp[i]][vitemp[grp[i]]][j]*gamma[grp[i]][j]; */
+/*       if(Y[i] == 0)  */
+/* 	W[i] = TruncNorm(dtemp0+dtemp1-1000,0,dtemp0+dtemp1,1,0); */
+/*       else  */
+/* 	W[i] = TruncNorm(0,dtemp0+dtemp1+1000,dtemp0+dtemp1,1,0); */
+/*       X[i][n_fixed] = W[i]-dtemp1; */
+/*       vitemp[grp[i]]++; */
+/*     } */
+/*     /\** STEP 2: Sample Fixed Effects Given Random Effects **\/ */
+/*     bNormalReg(X, beta, vdtemp, n_samp, n_fixed, 0, 1, beta0, A0, 0, 1, */
+/* 	       1, 1); */
 
-    /** STEP 3: Update Random Effects Given Fixed Effects **/
-    for (j = 0; j < n_grp; j++)
-      vitemp[j] = 0;
-    for (i = 0; i < n_samp; i++) {
-      Zgrp[grp[i]][vitemp[grp[i]]][n_random] = W[i];
-      for (j = 0; j < n_fixed; j++) 
-	Zgrp[grp[i]][vitemp[grp[i]]][n_random] -= X[i][j]*beta[j]; 
-      vitemp[grp[i]]++;
-    }
-    for (j = 0; j < n_grp; j++)
-      bNormalReg(Zgrp[j], gamma[j], vdtemp, vitemp[j], n_random,
-		 1, 1, gamma0, Psi, 0, 0, 1, 1);
+/*     /\** STEP 3: Update Random Effects Given Fixed Effects **\/ */
+/*     for (j = 0; j < n_grp; j++) */
+/*       vitemp[j] = 0; */
+/*     for (i = 0; i < n_samp; i++) { */
+/*       Zgrp[grp[i]][vitemp[grp[i]]][n_random] = W[i]; */
+/*       for (j = 0; j < n_fixed; j++)  */
+/* 	Zgrp[grp[i]][vitemp[grp[i]]][n_random] -= X[i][j]*beta[j];  */
+/*       vitemp[grp[i]]++; */
+/*     } */
+/*     for (j = 0; j < n_grp; j++) */
+/*       bNormalReg(Zgrp[j], gamma[j], vdtemp, vitemp[j], n_random, */
+/* 		 1, 1, gamma0, Psi, 0, 0, 1, 1); */
 
-    /** STEP 4: Update Covariance Matrix Given Random Effects **/
-    for (j = 0; j < n_random; j++)
-      for (k = 0; k < n_random; k++)
-	mtemp[j][k] = T0[j][k];
-    for (j = 0; j < n_grp; j++)
-      for (k = 0; k < n_random; k++)
-	for (l = 0; l < n_random; l++)
-	  mtemp[k][l] += gamma[j][k]*gamma[j][l];
-    dinv(mtemp, n_random, mtemp1);
-    rWish(Psi, mtemp1, tau0+n_grp, n_random);
+/*     /\** STEP 4: Update Covariance Matrix Given Random Effects **\/ */
+/*     for (j = 0; j < n_random; j++) */
+/*       for (k = 0; k < n_random; k++) */
+/* 	mtemp[j][k] = T0[j][k]; */
+/*     for (j = 0; j < n_grp; j++) */
+/*       for (k = 0; k < n_random; k++) */
+/* 	for (l = 0; l < n_random; l++) */
+/* 	  mtemp[k][l] += gamma[j][k]*gamma[j][l]; */
+/*     dinv(mtemp, n_random, mtemp1); */
+/*     rWish(Psi, mtemp1, tau0+n_grp, n_random); */
 
-    R_CheckUserInterrupt();
-  } /* end of Gibbs sampler */
+/*     R_CheckUserInterrupt(); */
+/*   } /\* end of Gibbs sampler *\/ */
 
-  /* freeing memory */
-  free(W);
-  free(vdtemp);
-  free(vitemp);
-  free(gamma0);
-  FreeMatrix(V, n_fixed);
-  FreeMatrix(mtemp, n_random);
-  FreeMatrix(mtemp1, n_random);
-} /* end of mixed effects probit */
+/*   /\* freeing memory *\/ */
+/*   free(W); */
+/*   free(vdtemp); */
+/*   free(vitemp); */
+/*   free(gamma0); */
+/*   FreeMatrix(V, n_fixed); */
+/*   FreeMatrix(mtemp, n_random); */
+/*   FreeMatrix(mtemp1, n_random); */
+/* } /\* end of mixed effects probit *\/ */
 
 /**
    A Random Walk Metroplis Sampler for Binomial Logistic Mixed Effects 
@@ -1291,196 +1587,196 @@ void logitMixedMetro(int *Y,        /* outcome variable: 0, 1, ..., J-1 */
 
 
 
-/*** 
-   A Standard Gibbs Sampler for Ordinal Probit Mixed Effects Regression
-***/ 
+/* /\***  */
+/*    A Standard Gibbs Sampler for Ordinal Probit Mixed Effects Regression */
+/* ***\/  */
 
-void boprobitMixedMCMC(int *Y,          /* binary outcome variable */
-		       double **X,      /* model matrix for fixed
-					   effects: the last column
-					   contains the starting values for W-Zgamma */
-		       double ***Zgrp,  /* model matrix for random
-					   effects organized by grous */
-		       int *grp,        /* group indicator: 0, 1, 2,... */
-		       double *beta,    /* fixed effects coefficients */
-		       double **gamma,  /* random effects coefficients */
-		       double *tau,     /* cutpoints */
-		       double **Psi,    /* precision matrix for random
-					   effects */
-		       int n_samp,      /* # of obs */ 
-		       int n_cat,       /* number of categories */
-		       int n_fixed,     /* # of fixed effects */
-		       int n_random,    /* # of random effects */
-		       int n_grp,       /* # of groups */
-		       int prior,       /* include prior for fixed effects in X? */
-		       double *beta0,   /* prior mean */
-		       double **A0,     /* prior precision */
-		       int tau0,        /* prior df */
-		       double **T0,     /* prior scale */
-		       int mh,          /* metropolis-hastings step
-					   for cutpoints? */
-		       double *prop,    /* proposal variance for MH
-					   step */
-		       int *accept,     /* counter for acceptance */
-		       int n_gen        /* # of gibbs draws */
-		       ) {
+/* void boprobitMixedMCMC(int *Y,          /\* binary outcome variable *\/ */
+/* 		       double **X,      /\* model matrix for fixed */
+/* 					   effects: the last column */
+/* 					   contains the starting values for W-Zgamma *\/ */
+/* 		       double ***Zgrp,  /\* model matrix for random */
+/* 					   effects organized by grous *\/ */
+/* 		       int *grp,        /\* group indicator: 0, 1, 2,... *\/ */
+/* 		       double *beta,    /\* fixed effects coefficients *\/ */
+/* 		       double **gamma,  /\* random effects coefficients *\/ */
+/* 		       double *tau,     /\* cutpoints *\/ */
+/* 		       double **Psi,    /\* precision matrix for random */
+/* 					   effects *\/ */
+/* 		       int n_samp,      /\* # of obs *\/  */
+/* 		       int n_cat,       /\* number of categories *\/ */
+/* 		       int n_fixed,     /\* # of fixed effects *\/ */
+/* 		       int n_random,    /\* # of random effects *\/ */
+/* 		       int n_grp,       /\* # of groups *\/ */
+/* 		       int prior,       /\* include prior for fixed effects in X? *\/ */
+/* 		       double *beta0,   /\* prior mean *\/ */
+/* 		       double **A0,     /\* prior precision *\/ */
+/* 		       int tau0,        /\* prior df *\/ */
+/* 		       double **T0,     /\* prior scale *\/ */
+/* 		       int mh,          /\* metropolis-hastings step */
+/* 					   for cutpoints? *\/ */
+/* 		       double *prop,    /\* proposal variance for MH */
+/* 					   step *\/ */
+/* 		       int *accept,     /\* counter for acceptance *\/ */
+/* 		       int n_gen        /\* # of gibbs draws *\/ */
+/* 		       ) { */
   
-  double *gamma0 = doubleArray(n_random);         /* prior mean for gamma */
-  double *Xbeta = doubleArray(n_samp);            /* X beta */
-  double *Zgamma = doubleArray(n_samp);
-  double **V = doubleMatrix(n_fixed, n_fixed);    /* variances for beta */
-  double *W = doubleArray(n_samp);
-  double *Wmax = doubleArray(n_cat);  /* max of W in each categry: 0, 1,
-					 ..., J-1 */
-  double *Wmin = doubleArray(n_cat);  /* min of W in each category: 0, 1, 
-					 ..., J-1 */
-  double **mtemp = doubleMatrix(n_random, n_random);
-  double **mtemp1 = doubleMatrix(n_random, n_random);
+/*   double *gamma0 = doubleArray(n_random);         /\* prior mean for gamma *\/ */
+/*   double *Xbeta = doubleArray(n_samp);            /\* X beta *\/ */
+/*   double *Zgamma = doubleArray(n_samp); */
+/*   double **V = doubleMatrix(n_fixed, n_fixed);    /\* variances for beta *\/ */
+/*   double *W = doubleArray(n_samp); */
+/*   double *Wmax = doubleArray(n_cat);  /\* max of W in each categry: 0, 1, */
+/* 					 ..., J-1 *\/ */
+/*   double *Wmin = doubleArray(n_cat);  /\* min of W in each category: 0, 1,  */
+/* 					 ..., J-1 *\/ */
+/*   double **mtemp = doubleMatrix(n_random, n_random); */
+/*   double **mtemp1 = doubleMatrix(n_random, n_random); */
 
-  /* storage parameters and loop counters */
-  int i, j, k, l, main_loop;  
-  int *vitemp = intArray(n_grp);
-  double dtemp;
-  double *vdtemp = doubleArray(1);
-  double *dvtemp = doubleArray(n_cat);
-  dvtemp[0] = tau[0];
-  vdtemp[0] = 1.0;
+/*   /\* storage parameters and loop counters *\/ */
+/*   int i, j, k, l, main_loop;   */
+/*   int *vitemp = intArray(n_grp); */
+/*   double dtemp; */
+/*   double *vdtemp = doubleArray(1); */
+/*   double *dvtemp = doubleArray(n_cat); */
+/*   dvtemp[0] = tau[0]; */
+/*   vdtemp[0] = 1.0; */
 
-  /* read the prior as additional data points */
-  if (prior) {
-    dcholdc(A0, n_fixed, V);
-    for(i = 0; i < n_fixed; i++) {
-      X[n_samp+i][n_fixed] = 0;
-      for(j = 0; j < n_fixed; j++) {
-	X[n_samp+i][n_fixed] += V[i][j]*beta0[j];
-	X[n_samp+i][j] = V[i][j];
-      }
-    }
-  }
+/*   /\* read the prior as additional data points *\/ */
+/*   if (prior) { */
+/*     dcholdc(A0, n_fixed, V); */
+/*     for(i = 0; i < n_fixed; i++) { */
+/*       X[n_samp+i][n_fixed] = 0; */
+/*       for(j = 0; j < n_fixed; j++) { */
+/* 	X[n_samp+i][n_fixed] += V[i][j]*beta0[j]; */
+/* 	X[n_samp+i][j] = V[i][j]; */
+/*       } */
+/*     } */
+/*   } */
 
-  for (j = 0; j < n_random; j++)
-    gamma0[j] = 0;
+/*   for (j = 0; j < n_random; j++) */
+/*     gamma0[j] = 0; */
 
-  /* Gibbs Sampler! */
-  for(main_loop = 1; main_loop <= n_gen; main_loop++){
-    /** STEP 1: Sample Latent Variable **/
-    for (j = 0; j < n_grp; j++)
-      vitemp[j] = 0;
-    for (i = 0; i < n_samp; i++){
-      Xbeta[i] = 0; Zgamma[i] = 0;
-      for (j = 0; j < n_fixed; j++) 
-	Xbeta[i] += X[i][j]*beta[j]; 
-      for (j = 0; j < n_random; j++)
-	Zgamma[i] += Zgrp[grp[i]][vitemp[grp[i]]][j]*gamma[grp[i]][j];
-      vitemp[grp[i]]++;
-    }
-    /* Sampling tau with MH step */
-    if (mh) {
-      for (j = 1; j < (n_cat-1); j++) 
-	dvtemp[j] = TruncNorm(dvtemp[j-1], tau[j+1], tau[j], prop[j-1], 1);
-      dtemp = 0; dvtemp[n_cat-1] = dvtemp[n_cat-2] + 1000;
-      /* for (j = 0; j < n_cat; j++) 
-	 Rprintf("tau %5d;%14g%14g%14g\n", j, tau[j], dvtemp[j], prop[j]);
-	 Rprintf("\n");
-      */
-      for (j = 1; j < (n_cat-1); j++) 
-	dtemp = dtemp + log(pnorm(tau[j+1]-tau[j], 0, sqrt(prop[j-1]), 1, 0) -
-			    pnorm(dvtemp[j-1]-tau[j], 0, sqrt(prop[j-1]), 1, 0)) -
-	  log(pnorm(dvtemp[j+1]-dvtemp[j], 0, sqrt(prop[j-1]), 1, 0) -
-	      pnorm(tau[j-1]-dvtemp[j], 0, sqrt(prop[j-1]), 1, 0));
-      for (i = 0; i < n_samp; i++) {
-	if (Y[i] == (n_cat-1))  
-	  dtemp = dtemp + pnorm(dvtemp[n_cat-2]-Xbeta[i]-Zgamma[i], 0, 1, 0, 1) -
-	    pnorm(tau[n_cat-2]-Xbeta[i]-Zgamma[i], 0, 1, 0, 1);
-	else if (Y[i] > 0) 
-	  dtemp = dtemp + log(pnorm(dvtemp[Y[i]]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0) -
-			      pnorm(dvtemp[Y[i]-1]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0)) -
-	    log(pnorm(tau[Y[i]]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0) -
-		pnorm(tau[Y[i]-1]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0));
-      }
-      /* Rprintf("%14g\n", exp(dtemp)); */
-      if (unif_rand() < exp(dtemp)) {
-	accept[0]++;
-	for (j = 1; j < n_cat; j++) 
-	  tau[j] = dvtemp[j];
-      }
-    } 
+/*   /\* Gibbs Sampler! *\/ */
+/*   for(main_loop = 1; main_loop <= n_gen; main_loop++){ */
+/*     /\** STEP 1: Sample Latent Variable **\/ */
+/*     for (j = 0; j < n_grp; j++) */
+/*       vitemp[j] = 0; */
+/*     for (i = 0; i < n_samp; i++){ */
+/*       Xbeta[i] = 0; Zgamma[i] = 0; */
+/*       for (j = 0; j < n_fixed; j++)  */
+/* 	Xbeta[i] += X[i][j]*beta[j];  */
+/*       for (j = 0; j < n_random; j++) */
+/* 	Zgamma[i] += Zgrp[grp[i]][vitemp[grp[i]]][j]*gamma[grp[i]][j]; */
+/*       vitemp[grp[i]]++; */
+/*     } */
+/*     /\* Sampling tau with MH step *\/ */
+/*     if (mh) { */
+/*       for (j = 1; j < (n_cat-1); j++)  */
+/* 	dvtemp[j] = TruncNorm(dvtemp[j-1], tau[j+1], tau[j], prop[j-1], 1); */
+/*       dtemp = 0; dvtemp[n_cat-1] = dvtemp[n_cat-2] + 1000; */
+/*       /\* for (j = 0; j < n_cat; j++)  */
+/* 	 Rprintf("tau %5d;%14g%14g%14g\n", j, tau[j], dvtemp[j], prop[j]); */
+/* 	 Rprintf("\n"); */
+/*       *\/ */
+/*       for (j = 1; j < (n_cat-1); j++)  */
+/* 	dtemp = dtemp + log(pnorm(tau[j+1]-tau[j], 0, sqrt(prop[j-1]), 1, 0) - */
+/* 			    pnorm(dvtemp[j-1]-tau[j], 0, sqrt(prop[j-1]), 1, 0)) - */
+/* 	  log(pnorm(dvtemp[j+1]-dvtemp[j], 0, sqrt(prop[j-1]), 1, 0) - */
+/* 	      pnorm(tau[j-1]-dvtemp[j], 0, sqrt(prop[j-1]), 1, 0)); */
+/*       for (i = 0; i < n_samp; i++) { */
+/* 	if (Y[i] == (n_cat-1))   */
+/* 	  dtemp = dtemp + pnorm(dvtemp[n_cat-2]-Xbeta[i]-Zgamma[i], 0, 1, 0, 1) - */
+/* 	    pnorm(tau[n_cat-2]-Xbeta[i]-Zgamma[i], 0, 1, 0, 1); */
+/* 	else if (Y[i] > 0)  */
+/* 	  dtemp = dtemp + log(pnorm(dvtemp[Y[i]]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0) - */
+/* 			      pnorm(dvtemp[Y[i]-1]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0)) - */
+/* 	    log(pnorm(tau[Y[i]]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0) - */
+/* 		pnorm(tau[Y[i]-1]-Xbeta[i]-Zgamma[i], 0, 1, 1, 0)); */
+/*       } */
+/*       /\* Rprintf("%14g\n", exp(dtemp)); *\/ */
+/*       if (unif_rand() < exp(dtemp)) { */
+/* 	accept[0]++; */
+/* 	for (j = 1; j < n_cat; j++)  */
+/* 	  tau[j] = dvtemp[j]; */
+/*       } */
+/*     }  */
 
-    /* Sampling the Latent Variable */
-    if (!mh) {
-      Wmin[0] = tau[0]; Wmax[0] = tau[0]-10;
-      for (j = 1; j < n_cat; j++) {
-	Wmin[j] = tau[j];
-	Wmax[j] = tau[j-1];
-      }
-    }
+/*     /\* Sampling the Latent Variable *\/ */
+/*     if (!mh) { */
+/*       Wmin[0] = tau[0]; Wmax[0] = tau[0]-10; */
+/*       for (j = 1; j < n_cat; j++) { */
+/* 	Wmin[j] = tau[j]; */
+/* 	Wmax[j] = tau[j-1]; */
+/*       } */
+/*     } */
 
-    for (i = 0; i < n_samp; i++){
-      if (Y[i] == 0) 
-	W[i] = TruncNorm(Xbeta[i]+Zgamma[i]-1000,0,Xbeta[i]+Zgamma[i],1,0);
-      else 
-	W[i] = TruncNorm(tau[Y[i]-1],tau[Y[i]],Xbeta[i]+Zgamma[i],1,0);
-      if (!mh) {
-	Wmax[Y[i]] = fmax2(Wmax[Y[i]], W[i]);
-	Wmin[Y[i]] = fmin2(Wmin[Y[i]], W[i]);
-      }
-      X[i][n_fixed] = W[i]-Zgamma[i];
-    }
+/*     for (i = 0; i < n_samp; i++){ */
+/*       if (Y[i] == 0)  */
+/* 	W[i] = TruncNorm(Xbeta[i]+Zgamma[i]-1000,0,Xbeta[i]+Zgamma[i],1,0); */
+/*       else  */
+/* 	W[i] = TruncNorm(tau[Y[i]-1],tau[Y[i]],Xbeta[i]+Zgamma[i],1,0); */
+/*       if (!mh) { */
+/* 	Wmax[Y[i]] = fmax2(Wmax[Y[i]], W[i]); */
+/* 	Wmin[Y[i]] = fmin2(Wmin[Y[i]], W[i]); */
+/*       } */
+/*       X[i][n_fixed] = W[i]-Zgamma[i]; */
+/*     } */
     
-    if(!mh) {
-      /* sampling taus without MH-step */
-      for (j = 1; j < (n_cat-1); j++) 
-	tau[j] = runif(fmax2(tau[j-1], Wmax[j]), 
-		       fmin2(tau[j+1], Wmin[j+1]));
-      tau[n_cat-1] = tau[n_cat-2] + 1000;
-    }
+/*     if(!mh) { */
+/*       /\* sampling taus without MH-step *\/ */
+/*       for (j = 1; j < (n_cat-1); j++)  */
+/* 	tau[j] = runif(fmax2(tau[j-1], Wmax[j]),  */
+/* 		       fmin2(tau[j+1], Wmin[j+1])); */
+/*       tau[n_cat-1] = tau[n_cat-2] + 1000; */
+/*     } */
 
-    /** STEP 2: Sample Fixed Effects Given Random Effects **/
-    bNormalReg(X, beta, vdtemp, n_samp, n_fixed, 0, 1, beta0, A0, 0, 1,
-	       1, 1);
+/*     /\** STEP 2: Sample Fixed Effects Given Random Effects **\/ */
+/*     bNormalReg(X, beta, vdtemp, n_samp, n_fixed, 0, 1, beta0, A0, 0, 1, */
+/* 	       1, 1); */
 
-    /** STEP 3: Update Random Effects Given Fixed Effects **/
-    for (j = 0; j < n_grp; j++)
-      vitemp[j] = 0;
-    for (i = 0; i < n_samp; i++) {
-      Zgrp[grp[i]][vitemp[grp[i]]][n_random] = W[i];
-      for (j = 0; j < n_fixed; j++) 
-	Zgrp[grp[i]][vitemp[grp[i]]][n_random] -= X[i][j]*beta[j]; 
-      vitemp[grp[i]]++;
-    }
-    for (j = 0; j < n_grp; j++)
-      bNormalReg(Zgrp[j], gamma[j], vdtemp, vitemp[j], n_random,
-		 1, 1, gamma0, Psi, 0, 0, 1, 1);
+/*     /\** STEP 3: Update Random Effects Given Fixed Effects **\/ */
+/*     for (j = 0; j < n_grp; j++) */
+/*       vitemp[j] = 0; */
+/*     for (i = 0; i < n_samp; i++) { */
+/*       Zgrp[grp[i]][vitemp[grp[i]]][n_random] = W[i]; */
+/*       for (j = 0; j < n_fixed; j++)  */
+/* 	Zgrp[grp[i]][vitemp[grp[i]]][n_random] -= X[i][j]*beta[j];  */
+/*       vitemp[grp[i]]++; */
+/*     } */
+/*     for (j = 0; j < n_grp; j++) */
+/*       bNormalReg(Zgrp[j], gamma[j], vdtemp, vitemp[j], n_random, */
+/* 		 1, 1, gamma0, Psi, 0, 0, 1, 1); */
 
-    /** STEP 4: Update Covariance Matrix Given Random Effects **/
-    for (j = 0; j < n_random; j++)
-      for (k = 0; k < n_random; k++)
-	mtemp[j][k] = T0[j][k];
-    for (j = 0; j < n_grp; j++)
-      for (k = 0; k < n_random; k++)
-	for (l = 0; l < n_random; l++)
-	  mtemp[k][l] += gamma[j][k]*gamma[j][l];
-    dinv(mtemp, n_random, mtemp1);
-    rWish(Psi, mtemp1, tau0+n_grp, n_random);
+/*     /\** STEP 4: Update Covariance Matrix Given Random Effects **\/ */
+/*     for (j = 0; j < n_random; j++) */
+/*       for (k = 0; k < n_random; k++) */
+/* 	mtemp[j][k] = T0[j][k]; */
+/*     for (j = 0; j < n_grp; j++) */
+/*       for (k = 0; k < n_random; k++) */
+/* 	for (l = 0; l < n_random; l++) */
+/* 	  mtemp[k][l] += gamma[j][k]*gamma[j][l]; */
+/*     dinv(mtemp, n_random, mtemp1); */
+/*     rWish(Psi, mtemp1, tau0+n_grp, n_random); */
 
 
-    R_CheckUserInterrupt();
-  } /* end of Gibbs sampler */
+/*     R_CheckUserInterrupt(); */
+/*   } /\* end of Gibbs sampler *\/ */
 
-  /* freeing memory */
-  free(gamma0);
-  free(Xbeta);
-  free(Zgamma);
-  FreeMatrix(V, n_fixed);
-  free(W);
-  free(Wmax);
-  free(Wmin);
-  FreeMatrix(mtemp, n_random);
-  FreeMatrix(mtemp1, n_random);
-  free(vdtemp);
-  free(dvtemp);
-  free(vitemp);
-} /* end of mixed effects ordinal probit */
+/*   /\* freeing memory *\/ */
+/*   free(gamma0); */
+/*   free(Xbeta); */
+/*   free(Zgamma); */
+/*   FreeMatrix(V, n_fixed); */
+/*   free(W); */
+/*   free(Wmax); */
+/*   free(Wmin); */
+/*   FreeMatrix(mtemp, n_random); */
+/*   FreeMatrix(mtemp1, n_random); */
+/*   free(vdtemp); */
+/*   free(dvtemp); */
+/*   free(vitemp); */
+/* } /\* end of mixed effects ordinal probit *\/ */
 
 
 

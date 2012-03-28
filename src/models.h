@@ -2,7 +2,7 @@
 void bNormalReg(double **D, double *beta, double *sig2, 
 		int n_samp, int n_cov, int addprior, int pbeta, 
 		double *beta0, double **A0, int psig2, double s0, 
-		int nu0, int sig2fixed);
+		int nu0, int sig2fixed, int conjugate);
   
 /* binomial probit regression */
 void bprobitGibbs(int *Y, double **X, double *beta, int n_samp, 
