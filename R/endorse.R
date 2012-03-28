@@ -47,7 +47,6 @@ endorse <- function(Y,
                     MCMC = 20000,
                     burn = 1000,
                     thin = 1,
-                    mda = FALSE,
                     mh = TRUE,
                     prop = 0.001,
                     x.sd = TRUE,
@@ -60,6 +59,8 @@ endorse <- function(Y,
                     seed.store = FALSE,
                     update = FALSE,
                     update.start = NULL) {
+
+  mda = FALSE
 
   if (!identical.lambda & hierarchical)
     stop("Options are not consistent. If 'identical.lambda = TRUE', 'hierarchical' must be set at
@@ -216,12 +217,16 @@ endorse <- function(Y,
     }
 
     if (length(s.start) == 1) {
-      s.start <- matrix(s.start, nrow = N, ncol = J)
+      s.start <- as.numeric(matrix(s.start, nrow = N, ncol = J))
+      s.start[as.integer(endorse) == 0] <- 0
     } else if (class(s.start) != "matrix" | dim(s.start)[1] != N | dim(s.start)[2] != J) {
       stop(paste("Incorrect input for s.start. It should be a ",
                  N, "-by-", J, " matrix.", sep = ""))
+    } else {
+      s.start <- as.double(s.start)
+      s.start[as.integer(endorse) == 0] <- 0
     }
-
+      
     if (length(beta.start) == 1) {
       beta.start <- matrix(beta.start, nrow = J, ncol = 2)
     } else if (class(beta.start) != "matrix" | dim(beta.start)[1] != J | dim(beta.start)[2] != 2) {
@@ -417,12 +422,12 @@ endorse <- function(Y,
              lambdaStore = if (!identical.lambda) double(printout * J * K * M) else if (hierarchical) double(printout * K * (G + M - 1)) else double(printout * K * M),
              thetaStore = if (!identical.lambda) double(printout * K * M) else double(1),
              kappaStore = if (hierarchical) double(printout * K * P) else double(1),
-             deltaStore = if (covariates & hierarchical) double(printout * (G + (M - 1))) else if (covariates) double(printout * M) else double(1),
+             deltaStore = if (hierarchical) double(printout * (G + M - 1)) else if (covariates) double(printout * M) else double(1),
              zetaStore = if (hierarchical) double(printout * P) else double(1),
              omega2Store = if (omega2.out & !identical.lambda) double(printout * J * K) else if (omega2.out) double(printout * K) else double(1),
              phi2Store = if (phi2.out & !identical.lambda) double(printout * K * M) else double(1),
              psi2Store = if (psi2.out & hierarchical) double(printout * K) else double(1),
-	     sig2Store = if (covariates) double(printout) else double(1),
+	     sig2Store = if (covariates | hierarchical) double(printout) else double(1),
              rho2Store = if (hierarchical) double(printout) else double(1), 
              betaLast = if (seed.store) double(2 * J) else double(1),
              tauLast = if (seed.store) double((max.L - 1) * J) else double(1),
@@ -455,12 +460,12 @@ endorse <- function(Y,
               lambda = if (identical.lambda & hierarchical) matrix(as.double(temp$lambdaStore), byrow = TRUE, ncol = (G + M - 1) * K, nrow = printout) else if (identical.lambda) matrix(as.double(temp$lambdaStore), byrow = TRUE, ncol = M * K, nrow = printout) else matrix(as.double(temp$lambdaStore), byrow = TRUE, ncol = J * M * K, nrow = printout),
               theta = if (identical.lambda) NULL else matrix(as.double(temp$thetaStore), byrow = TRUE, ncol = K * M, nrow = printout),
               kappa = if (hierarchical) matrix(as.double(temp$kappaStore), byrow = TRUE, ncol = P * K, nrow = printout) else NULL,
-              delta = if (covariates & hierarchical) matrix(as.double(temp$deltaStore), byrow = TRUE, ncol = G + M - 1, nrow = printout) else if (covariates) matrix(as.double(temp$deltaStore), byrow = TRUE, ncol = M, nrow = printout) else NULL,
+              delta = if (hierarchical) matrix(as.double(temp$deltaStore), byrow = TRUE, ncol = G + M - 1, nrow = printout) else if (covariates) matrix(as.double(temp$deltaStore), byrow = TRUE, ncol = M, nrow = printout) else NULL,
               zeta = if (hierarchical) matrix(as.double(temp$zetaStore), byrow = TRUE, ncol = P, nrow = printout) else NULL,
               omega2 = if (identical.lambda & omega2.out) matrix(as.double(temp$omega2Store), byrow = TRUE, ncol = K, nrow = printout) else if (omega2.out) matrix(as.double(temp$omega2Store), byrow = TRUE, ncol = J * K, nrow = printout) else NULL,
               phi2 = if (!identical.lambda & phi2.out) matrix(as.double(temp$phi2Store), byrow = TRUE, ncol = K * M, nrow = printout) else NULL,
               psi2 = if (hierarchical & psi2.out) matrix(as.double(temp$psi2Store), byrow = TRUE, ncol = K, nrow = printout) else NULL,
-	      sig2 = if (covariates & hierarchical) matrix(as.double(temp$sig2Store), ncol = 1, nrow = printout) else NULL,
+	      sig2 = if (hierarchical | covariates) matrix(as.double(temp$sig2Store), ncol = 1, nrow = printout) else NULL,
               rho2 = if (hierarchical) matrix(as.double(temp$rho2Store), byrow = TRUE, ncol = 1, nrow = printout) else NULL,
               accept.ratio = if (mh) as.double(temp$accept.ratio) else NULL,
               seed = if (seed.store) seedStore else NULL,
@@ -471,12 +476,12 @@ endorse <- function(Y,
               lambda.start = if (seed.store & covariates) as.double(temp$lambdaLast) else NULL,
               theta.start = if (seed.store & !identical.lambda & covariates) as.double(temp$thetaLast) else NULL,
               kappa.start = if (seed.store & hierarchical) as.double(temp$kappaLast) else NULL,
-              delta.start = if (seed.store & covariates) as.double(temp$deltaLast) else NULL,
+              delta.start = if (seed.store & (covariates | hierarchical)) as.double(temp$deltaLast) else NULL,
               zeta.start = if (seed.store & hierarchical) as.double(temp$zetaLast) else NULL,
               omega2.start = if (seed.store) as.double(temp$omega2Last) else NULL,
               phi2.start = if (seed.store & !identical.lambda) as.double(temp$phi2Last) else NULL,
               psi2.start = if (seed.store & hierarchical) as.double(temp$psi2Last) else NULL,
-	      sig2.start = if (seed.store & covariates) as.double(temp$sig2.start) else NULL,
+	      sig2.start = if (seed.store & (covariates | hierarchical)) as.double(temp$sig2.start) else NULL,
               rho2.start = if (seed.store & hierarchical) as.double(temp$rho2Last) else NULL,
               village.indicator = village + 1,
               model.matrix.indiv = cov.mat,
@@ -486,7 +491,8 @@ endorse <- function(Y,
               hierarchical = hierarchical,
               identical.lambda = identical.lambda,
               num.act = K,
-              num.policy = J)
+              num.policy = J,
+              treat = endorse)
 
   colnames(res$beta) <- paste(rep(c("alpha", "beta"), times = J),
                               rep(1:J, each = 2), sep = ".")
@@ -501,6 +507,7 @@ endorse <- function(Y,
 
   if (x.sd) {
     colnames(res$x) <- "sd.x"
+    res$x <- mcmc(res$x, start = burn + 1, end = MCMC, thin = thin)
   } else {
     colnames(res$x) <- paste("x", 1:N, sep = ".")
     res$x <- mcmc(res$x, start = burn + 1, end = MCMC, thin = thin)
@@ -512,30 +519,15 @@ endorse <- function(Y,
   }
 
   
-##   if (identical.lambda) {
-##     temp.names <- paste("lambda", 1:K, sep = "")
-##     if (covariates) {
-##       colnames(res$lambda) <- paste(rep(temp.names, each = M),
-##                                     rep(1:M, times = K),
-##                                     sep = ".")
-##     } else {
-##       colnames(res$lambda) <- temp.names
-##     }
-##   } else {
-##     temp.names <- paste("lambda", rep(1:J, each = K), rep(1:K, times = J),
-##                         sep = "")
-##     if (covariates) {
-##       colnames(res$lambda) <- paste(rep(temp.names, each = M),
-##                                     rep(1:M, times = (J * K)),
-##                                     sep = ".")
-##     } else {
-##       colnames(res$lambda) <- temp.names
-##     }
-##   }
   if (identical.lambda) {
     if (hierarchical) {
-      colnames(res$lambda) <- paste(rep(c(paste("village", 1:G, sep = "."), var.names.indiv[2:M]), times = K),
-                                    rep(1:K, each = G + M - 1), sep = ".")
+      if (covariates) {
+        colnames(res$lambda) <- paste(rep(c(paste("village", 1:G, sep = "."), var.names.indiv[2:M]), times = K),
+                                      rep(1:K, each = G + M - 1), sep = ".")
+      } else {
+        colnames(res$lambda) <- paste(rep(paste("village", 1:G, sep = "."), times = K),
+                                      rep(1:K, each = G), sep = ".")
+      }
     } else {
       colnames(res$lambda) <- paste(rep(var.names.indiv, times = K),
                                     rep(1:K, each = M), sep =".")
@@ -582,19 +574,22 @@ endorse <- function(Y,
     }
   }
   
-  if (covariates) {
-    if (hierarchical) {
+
+  if (hierarchical) {
+    if (covariates) {
       colnames(res$delta) <- c(paste("village", 1:G, sep = "."), var.names.indiv[2:M])
     } else {
+      colnames(res$delta) <- paste("village", 1:G, sep = ".")
+    }
+    res$delta <- mcmc(res$delta, start = burn + 1, end = MCMC, thin = thin)  
+  } else if (covariates) {
       colnames(res$delta) <- var.names.indiv
-    }
-    res$delta <- mcmc(res$delta, start = burn + 1, end = MCMC, thin = thin)
+      res$delta <- mcmc(res$delta, start = burn + 1, end = MCMC, thin = thin)  
+  }
 
-    if (hierarchical) {
-      colnames(res$sig2) <- "sig2.x"
-      res$sig2 <- mcmc(res$sig2, start = burn + 1, end = MCMC, thin = thin)
-    }
-
+  if (hierarchical) {
+    colnames(res$sig2) <- "sig2"
+    res$sig2 <- mcmc(res$sig2, start = burn + 1, end = MCMC, thin = thin)
   }
 
   if (hierarchical) {

@@ -12,21 +12,22 @@
 }
 \usage{
 endorse(Y, data, data.village = NA, village = NA, treat = NA,
-	na.strings = 99, identical.lambda = TRUE, covariates = FALSE,
-	 formula.indiv = NA, hierarchical = FALSE, formula.village = NA,
-	x.start = 0, s.start = 0, beta.start = 1,
-        tau.start = NA, lambda.start = 0, omega2.start = .1,
-        theta.start = 0, phi2.start = .1, kappa.start = 0,
-	psi2.start = 1, delta.start = 0, zeta.start = 0, rho2.start = 1,
-        mu.beta = 0, mu.x = 0, mu.theta = 0, mu.kappa = 0, mu.delta = 0,
-	mu.zeta = 0, precision.beta = 0.04, precision.x = 1, precision.theta = 0.04,
-	precision.kappa = 0.04, precision.delta = 0.04, precision.zeta = 0.04,
-	s0.omega2= .2, nu0.omega2 = 30, s0.phi2 = .2, nu0.phi2 = 30, s0.psi2 = .2,
-	nu0.psi2 = 30, s0.sig2 = 1, nu0.sig2 = 400, s0.rho2 = .2, nu0.rho2 = 30,	
-	MCMC = 20000, burn = 1000, thin = 1, mda = FALSE, mh = TRUE, prop = 0.001,
-	x.sd = TRUE, tau.out = FALSE, s.out = FALSE, omega2.out = TRUE, 
-	phi2.out = TRUE, psi2.out = TRUE, verbose = TRUE, seed.store = FALSE,
-        update = FALSE, update.start = NULL)
+        na.strings = 99, identical.lambda = TRUE, covariates = FALSE,
+        formula.indiv = NA, hierarchical = FALSE, formula.village = NA,
+        x.start = 0, s.start = 0, beta.start = 1, tau.start = NA,
+        lambda.start = 0, omega2.start = .1, theta.start = 0,
+        phi2.start = .1, kappa.start = 0, psi2.start = 1,
+        delta.start = 0, zeta.start = 0, rho2.start = 1, mu.beta = 0,
+        mu.x = 0, mu.theta = 0, mu.kappa = 0, mu.delta = 0, mu.zeta = 0,
+        precision.beta = 0.04, precision.x = 1, precision.theta = 0.04,
+        precision.kappa = 0.04, precision.delta = 0.04,
+        precision.zeta = 0.04, s0.omega2= .2, nu0.omega2 = 30,
+        s0.phi2 = .2, nu0.phi2 = 30, s0.psi2 = .2, nu0.psi2 = 30,
+        s0.sig2 = 1, nu0.sig2 = 400, s0.rho2 = .2, nu0.rho2 = 30,
+        MCMC = 20000, burn = 1000, thin = 1,  mh = TRUE, prop = 0.001,
+        x.sd = TRUE, tau.out = FALSE, s.out = FALSE, omega2.out = TRUE,
+        phi2.out = TRUE, psi2.out = TRUE, verbose = TRUE,
+        seed.store = FALSE, update = FALSE, update.start = NULL)
 }
 
 \arguments{
@@ -391,11 +392,6 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     is \code{1}.
   }
 
-  \item{mda}{logical. If \code{TRUE}, the marginal data augmentation
-    algorithm is used to sample the question related parameters,
-    \eqn{\alpha} and \eqn{\beta}. The default is \code{FALSE}.
-  }
-
   \item{mh}{logical. If \code{TRUE}, the Metropolis-Hastings algorithm
     is used to sample the cut points in the response model. The default is
     \code{TRUE}.
@@ -531,15 +527,15 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   If you set \code{identical.lambda = TRUE} and \code{hierarchical = TRUE},
   the model is if \eqn{T_{ij} \neq 0},
   \deqn{
-    s_{ijk} \sim \mathcal{N}(lambda^{0}_{village[i]} + Z_i^{T} \lambda_{k}, \; \omega_{k}^2)
+    s_{ijk} \sim \mathcal{N}(\lambda^{0}_{k, village[i]} + Z_i^{T} \lambda_{k}, \; \omega_{k}^2)
   }{%
-    s_ijk ~ N(\lambda^{0}_village[i] + Z_i^T \lambda_k, \omega_k^2)%
+    s_ijk ~ N(\lambda^{0}_{k, village[i]} + Z_i^T \lambda_k, \omega_k^2)%
   }
   and
   \deqn{
-    lambda^{0}_{village[i]} \sim \mathcal{N}(V_{village[i]}^{T} \kappa_{k}, \; \psi_{k}^2)
+    \lambda^{0}_{k, village[i]} \sim \mathcal{N}(V_{village[i]}^{T} \kappa_{k}, \; \psi_{k}^2)
   }{%
-    lambda^{0}_{village[i]} ~ N( V_village[i]^T \kappa_k, \psi_k^2)%
+    lambda^{0}_{k, village[i]} ~ N( V_village[i]^T \kappa_k, \psi_k^2)%
   }
   for \eqn{k = 1, \dots, K}.
   
@@ -553,6 +549,22 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   for \eqn{i = 1, \dots, N} where \eqn{\sigma_x^2} is a known prior
   variance.
 
+  If you set \code{identical.lambda = TRUE} and \code{hierarchical = TRUE},
+  the model is
+  \deqn{
+    x_{i} \sim \mathcal{N}(\delta^{0}_{village[i]} + Z_i^{T} \delta, \; \sigma^2)
+  }{%
+    x_i ~ N(\delta^{0}_village[i] + Z_i^T \delta, \sigma^2)%
+  }
+  and
+  \deqn{
+    \delta^{0}_{village[i]} \sim \mathcal{N}(V_{village[i]}^{T} \zeta, \; \rho^2)
+  }{%
+    delta^{0}_{village[i]} ~ N( V_village[i]^T \zeta, \rho^2)%
+  }
+  for \eqn{k = 1, \dots, K}.
+
+  
   Finally, the following independent prior distributions are placed on
   unknown parameters,
   \deqn{
@@ -636,6 +648,29 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   \item{zeta}{an mcmc object.
   }
 
+  Note that the posterior sample of all parameters are NOT
+  standardized. In making posterior inference, each parameter should be
+  divided by the standard deviation of x (in the default setting, it is
+  given as "x") or by \eqn{\sigma^2}{sigma} (in the default setting, it
+  is given as "sigma2").
+
+  Also note that \eqn{\alpha}{alpha} and the intercept in
+  \eqn{\delta}{delta} (or, if the model is hierarchical, the intercept
+  in \eqn{\zeta}{zeta}) are not identified.  Instead,
+  \deqn{  
+    - \alpha + \beta * \delta_0
+  }{%
+    - alpha + beta * delta_0
+  }
+  or, if the model is hierarchical,
+  \deqn{  
+    - \alpha + \beta * \zeta_0
+  }{%
+    - alpha + beta * zeta_0
+  }
+  is identified after either of the above standardization, where
+  \eqn{\delta_0}{delta_0} and \eqn{\zeta_0}{zeta_0} denote the
+  intercepts.
 }
 
 \references{
@@ -656,14 +691,21 @@ Y <- list(Q1 = c("Polio.a", "Polio.b", "Polio.c", "Polio.d", "Polio.e"),
           Q4 = c("Curriculum.a", "Curriculum.b", "Curriculum.c",
                  "Curriculum.d", "Curriculum.e"))
 
-## Without covariates
-endorse.out <- endorse(Y = Y, data = pakistan)
+## Varying lambda non-hierarchical model without covariates
+endorse.out <- endorse(Y = Y, data = pakistan, identical.lambda = FALSE,
+                       covariates = FALSE, hierarchical = FALSE)
 
-## With covariates
-cov.formula <- formula( ~ female + rural)
-endorse.cov.out <- endorse(Y = Y, data = pakistan, covariates = TRUE,
-                           formula = cov.formula)
+## Varying lambda non-hierarchical model with covariates
+indiv.covariates <- formula( ~ female + rural)
+endorse.out <- endorse(Y = Y, data = pakistan, identical.lambda = FALSE,
+                       covariates = TRUE, formula.indiv = indiv.covariates,
+                       hierarchical = FALSE)
 
+## Common lambda non-hierarchical model with covariates
+indiv.covariates <- formula( ~ female + rural)
+endorse.out <- endorse(Y = Y, data = pakistan, identical.lambda = TRUE,
+                       covariates = TRUE, formula.indiv = indiv.covariates,
+                       hierarchical = FALSE)
 }
 }
 

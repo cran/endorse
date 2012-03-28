@@ -221,6 +221,9 @@ void R2endorse(/*   Data   */
   s0_rho2 = param_invchisq[8];
   nu0_rho2 = param_invchisq[9];
 
+  /* storage */
+  double ssr;
+
   /* storage vectors */
   int *Y_j = intArray(n_samp);
   double *beta = doubleArray(2);
@@ -237,6 +240,7 @@ void R2endorse(/*   Data   */
   double *kappa_k = doubleArray(n_vil_dim);
   double *psi2_k = doubleArray(1);
   double *stemp = doubleArray(n_samp * n_pol);
+  double *s2temp = doubleArray(n_samp * n_pol);
   double *ztemp = doubleArray(n_samp * n_pol * n_dim);
   int *vtemp = intArray(n_samp * n_pol);
   double *theta_km = doubleArray(n_dim);
@@ -609,12 +613,17 @@ void R2endorse(/*   Data   */
 	  if (identical_lambda) {
 	    if (hierarchical) {
 	      mu_s[0] += Lambda[0][k - 1][village[i]];
-	      for (m = 1; m < n_dim; m++)
-		mu_s[0] += Lambda[0][k - 1][n_vil + m - 1] * Z[i][m];
+
+	      if (covariates) {
+		for (m = 1; m < n_dim; m++)
+		  mu_s[0] += Lambda[0][k - 1][n_vil + m - 1] * Z[i][m];
+	      }
 
 	    } else {
+
 	      for (m = 0; m < n_dim; m++)
 		mu_s[0] += Lambda[0][k-1][m] * Z[i][m];
+
 	    }
 
 	    A0_s[0][0] = (1 / Omega2[0][k-1]);
@@ -664,11 +673,16 @@ void R2endorse(/*   Data   */
       }
       
       /*** prior mean ***/
-      if (covariates && hierarchical) {
+      if (hierarchical) {
+
 	mu_x[0] = delta[village[i]];
-	for (m = 0; m < (n_dim - 1); m++)
-	  mu_x[0] += Z[i][(m + 1)] * delta[n_vil + m];
-      }	else if (covariates && !hierarchical) {
+
+	if (covariates) {
+	  for (m = 0; m < (n_dim - 1); m++)
+	    mu_x[0] += Z[i][(m + 1)] * delta[n_vil + m];
+	}
+
+      }	else if (covariates) {
 	mu_x[0] = 0;
 	for (m = 0; m < n_dim; m++)
 	  mu_x[0] += Z[i][m] * delta[m];
@@ -709,229 +723,244 @@ void R2endorse(/*   Data   */
 
 
     if (identical_lambda) { /** start sampling lambda,
-				 lambdas are identical across policies **/
+    				 lambdas are identical across policies **/
       for (k = 0; k < n_act; k++) {
-	/*** # of observations with treatment k for question j ***/
-	n = 0;
-	itemp = 0;
-	for (j = 0; j < n_pol; j++) {
-	  for (i = 0; i < n_samp; i++) {
-	    if ((k+1) == T[i][j]) {
-	      stemp[n] = S[i][j];
+    	/*** # of observations with treatment k for question j ***/
+    	n = 0;
+    	itemp = 0;
+    	for (j = 0; j < n_pol; j++) {
+    	  for (i = 0; i < n_samp; i++) {
+    	    if ((k+1) == T[i][j]) {
+    	      stemp[n] = S[i][j];
 
-	      /* individual level covariates except for the intercept */
-	      for (m = 1; m < n_dim; m++)
-		ztemp[itemp++] = Z[i][m];
+    	      /* individual level covariates except for the intercept */
+    	      for (m = 1; m < n_dim; m++)
+    		ztemp[itemp++] = Z[i][m];
 
-	      /* village specific intercept */
-	      vtemp[n] = village[i];
+    	      /* village specific intercept */
+    	      vtemp[n] = village[i];
 
-	      n++;
-	    }
-	  }
-	}
+    	      n++;
+    	    }
+    	  }
+    	}
 	
-	if (n == 0)
-	  continue;
+    	if (n == 0)
+    	  continue;
 
 
-	if (hierarchical) {
-	  /* sampling coefficients */
-	  itemp = 0;
-	  for (l = 0; l < n; l++) {
+    	if (hierarchical) {
+	  
+    	  if (covariates) {
+    	    /* sampling coefficients */
+    	    itemp = 0;
+    	    for (l = 0; l < n; l++) {
 
-	    /* packing covariates except for the intercept */
-	    for (m = 0; m < (n_dim - 1); m++)
-	      D_lambda[l][m] = ztemp[itemp++];
+    	      /* packing covariates except for the intercept */
+    	      for (m = 0; m < (n_dim - 1); m++)
+    		D_lambda[l][m] = ztemp[itemp++];
 
-	    /* regressand, s */
-	    D_lambda[l][n_dim - 1] = stemp[l] - Lambda[0][k][vtemp[l]];
+    	      /* regressand, s */
+    	      D_lambda[l][n_dim - 1] = stemp[l] - Lambda[0][k][vtemp[l]];
+    	    }
+
+    	    /* prior */
+    	    for (m = 0; m < (n_dim - 1); m++) {
+    	      mu_lambda[m] = dmu_theta[(k * (n_dim - 1) + m)];
+    	      A0_lambda[m][m] = dA0_theta[m];
+    	    }
+
+    	    omega2_jk[0] = Omega2[0][k];
+
+    	    bNormalReg(D_lambda, lambda_jk, omega2_jk, n, (n_dim - 1), 1, 1,
+    		       mu_lambda, A0_lambda, 1, s0_omega2, nu0_omega2, 0, 0);
+
+    	    Omega2[0][k] = omega2_jk[0];
+
+    	    for (m = 0; m < (n_dim - 1); m++)
+    	      Lambda[0][k][n_vil + m] = lambda_jk[m];
+    	  } else {
+	    /* sampling omega2 when hierarchical model without individual level covariate */
+	    ssr = 0;
+	    for (l = 0; l < n; l++) {
+	      s2temp[l] = (stemp[l] - Lambda[0][k][vtemp[l]]) * (stemp[l] - Lambda[0][k][vtemp[l]]);
+	      ssr += s2temp[l];
+	    }
+	    Omega2[0][k] = (ssr + nu0_omega2 * s0_omega2) / rchisq((double)n+nu0_omega2);
 	  }
 
-	  /* prior */
-	  for (m = 0; m < (n_dim - 1); m++) {
-	    mu_lambda[m] = dmu_theta[(k * (n_dim - 1) + m)];
-	    A0_lambda[m][m] = dA0_theta[m];
-	  }
-
-	  omega2_jk[0] = Omega2[0][k];
-
-	  bNormalReg(D_lambda, lambda_jk, omega2_jk, n, (n_dim - 1), 1, 1,
-		     mu_lambda, A0_lambda, 1, s0_omega2, nu0_omega2, 0, 0);
-
-	  Omega2[0][k] = omega2_jk[0];
-
-	  for (m = 0; m < (n_dim - 1); m++)
-	    Lambda[0][k][n_vil + m] = lambda_jk[m];
-
-	  itemp = 0;
-	  for (l = 0; l < n; l++)
-	    for (m = 0; m < (n_dim - 1); m++)
-	      D_lambda[l][m] = ztemp[itemp++];
+    	  itemp = 0;
+    	  for (l = 0; l < n; l++)
+    	    for (m = 0; m < (n_dim - 1); m++)
+    	      D_lambda[l][m] = ztemp[itemp++];
 	  
 
-	  /* sampling village specific intercept */
-	  for (m = 0; m < n_vil; m++) {
-	    itemp = 0;
-	    for (l = 0; l < n; l++){
-	      if (vtemp[l] == m) {
+    	  /* sampling village specific intercept */
+    	  for (m = 0; m < n_vil; m++) {
+    	    itemp = 0;
+    	    for (l = 0; l < n; l++){
+    	      if (vtemp[l] == m) {
 
-		D_lambda_vil[itemp][1] = stemp[l];
+    		D_lambda_vil[itemp][1] = stemp[l];
 
-		for (j = 0; j < (n_dim - 1); j++) {
-		  D_lambda_vil[itemp][1] -= D_lambda[l][j] * Lambda[0][k][n_vil + j];
-		}
+    		if (covariates) {
+    		  for (j = 0; j < (n_dim - 1); j++) {
+    		    D_lambda_vil[itemp][1] -= D_lambda[l][j] * Lambda[0][k][n_vil + j];
+    		  }
+    		}
 
-		D_lambda_vil[itemp][0] = 1;
+    		D_lambda_vil[itemp][0] = 1;
 
-		itemp++;
-	      }
-	    }
+    		itemp++;
+    	      }
+    	    }
 
 
-	    /** add prior **/
-	    mu_lambda[0] = 0;
-	    for (j = 0; j < n_vil_dim; j++)
-	      mu_lambda[0] += D_kappa[m][j] * Kappa[k][j];
+    	    /** add prior **/
+    	    mu_lambda[0] = 0;
+    	    for (j = 0; j < n_vil_dim; j++)
+    	      mu_lambda[0] += D_kappa[m][j] * Kappa[k][j];
 
-	    A0_lambda[0][0] = (1 / psi2[k]);
+    	    A0_lambda[0][0] = (1 / psi2[k]);
 
-	    bNormalReg(D_lambda_vil, lambda_jk, omega2_jk, itemp, 1, 1, 1,
-		       mu_lambda, A0_lambda, 0, 1, 1, 1, 0);
+	    omega2_jk[0] = Omega2[0][k];
 
-	    Lambda[0][k][m] = lambda_jk[0];
-	  }
+    	    bNormalReg(D_lambda_vil, lambda_jk, omega2_jk, itemp, 1, 1, 1,
+    		       mu_lambda, A0_lambda, 0, 1, 1, 1, 0);
 
-	} else { /* non-hierarchical model */
-	  itemp = 0;
-	  for (l = 0; l < n; l++) {
-	    /* packing covariates except for the intercept */
-	    for (m = 0; m < (n_dim - 1); m++)
-	      D_lambda[l][n_vil + m] = ztemp[itemp++];
+    	    Lambda[0][k][m] = lambda_jk[0];
+    	  }
 
-	    /* intercept */
-	    D_lambda[l][0] = 1;
+    	} else { /* non-hierarchical model */
+    	  itemp = 0;
+    	  for (l = 0; l < n; l++) {
+    	    /* packing covariates except for the intercept */
+    	    for (m = 0; m < (n_dim - 1); m++)
+    	      D_lambda[l][n_vil + m] = ztemp[itemp++];
 
-	    /* regressand, s */
-	    D_lambda[l][n_dim + n_vil - 1] = stemp[l];
-	  }
+    	    /* intercept */
+    	    D_lambda[l][0] = 1;
+
+    	    /* regressand, s */
+    	    D_lambda[l][n_dim + n_vil - 1] = stemp[l];
+    	  }
 	  
-	  /* prior */
-	  for (m = 0; m < n_dim; m++) {
-	    mu_lambda[m] = dmu_theta[m];
-	    A0_lambda[m][m] = dA0_theta[m];
-	  }
+    	  /* prior */
+    	  for (m = 0; m < n_dim; m++) {
+    	    mu_lambda[m] = dmu_theta[m];
+    	    A0_lambda[m][m] = dA0_theta[m];
+    	  }
 	
-	  omega2_jk[0] = Omega2[0][k];
+    	  omega2_jk[0] = Omega2[0][k];
 
-	  bNormalReg(D_lambda, lambda_jk, omega2_jk, n, (n_dim + n_vil - 1), 1, 1,
-		     mu_lambda, A0_lambda, 0, s0_omega2, nu0_omega2, 0, 0);
+    	  bNormalReg(D_lambda, lambda_jk, omega2_jk, n, (n_dim + n_vil - 1), 1, 1,
+    		     mu_lambda, A0_lambda, 0, s0_omega2, nu0_omega2, 0, 0);
 
-	  for (m = 0; m < (n_dim + n_vil - 1); m++)
-	    Lambda[0][k][m] = lambda_jk[m];
+    	  for (m = 0; m < (n_dim + n_vil - 1); m++)
+    	    Lambda[0][k][m] = lambda_jk[m];
 
-	  Omega2[0][k] = omega2_jk[0];
-	}
+    	  Omega2[0][k] = omega2_jk[0];
+    	}
 
 
-	/*** storing sampled lambda ***/
-	if (main_loop > burn) {
-	  if (keep == thin) {
-	    if (hierarchical) {
-	      for (m = 0; m < (n_dim + n_vil - 1); m++)
-		lambdaStore[ilambda++] = Lambda[0][k][m];
-	    } else {
-	      for (m = 0; m < n_dim; m++)
-		lambdaStore[ilambda++] = Lambda[0][k][m];
-	    }
+    	/*** storing sampled lambda ***/
+    	if (main_loop > burn) {
+    	  if (keep == thin) {
+    	    if (hierarchical) {
+    	      for (m = 0; m < (n_dim + n_vil - 1); m++)
+    		lambdaStore[ilambda++] = Lambda[0][k][m];
+    	    } else {
+    	      for (m = 0; m < n_dim; m++)
+    		lambdaStore[ilambda++] = Lambda[0][k][m];
+    	    }
 
-	    if (omega2_out) omega2Store[iomega2++] = Omega2[0][k];
-	  }
-	}
+    	    if (omega2_out) omega2Store[iomega2++] = Omega2[0][k];
+    	  }
+    	}
 
-	if (seed_store) {
-	  if (main_loop == n_gen) {
-	    for (m = 0; m < (n_dim + n_vil - 1); m++)
-	      lambdaLast[ilambdaLast++] = Lambda[0][k][m];
+    	if (seed_store) {
+    	  if (main_loop == n_gen) {
+    	    for (m = 0; m < (n_dim + n_vil - 1); m++)
+    	      lambdaLast[ilambdaLast++] = Lambda[0][k][m];
 
-	    omega2Last[iomega2Last++] = Omega2[0][k];
-	  }
-	}
+    	    omega2Last[iomega2Last++] = Omega2[0][k];
+    	  }
+    	}
 
-	R_FlushConsole();
-	R_CheckUserInterrupt();
+    	R_FlushConsole();
+    	R_CheckUserInterrupt();
       }
     } else { /** start sampling lambda and omega2,
-		 lambdas are NOT identical across policies **/
+    		 lambdas are NOT identical across policies **/
       for (j = 0; j < n_pol; j++) {
-	for (k = 0; k < n_act; k++) {
+    	for (k = 0; k < n_act; k++) {
 
-	  /*** # of observations with treatment k for question j ***/
-	  n = 0;
-	  itemp = 0;
-	  for (i = 0; i < n_samp; i++) {
-	    if ((k+1) == T[i][j]) {
-	      stemp[n] = S[i][j];
+    	  /*** # of observations with treatment k for question j ***/
+    	  n = 0;
+    	  itemp = 0;
+    	  for (i = 0; i < n_samp; i++) {
+    	    if ((k+1) == T[i][j]) {
+    	      stemp[n] = S[i][j];
 
-	      for (m = 0; m < n_dim; m++)
-		ztemp[itemp++] = Z[i][m];
+    	      for (m = 0; m < n_dim; m++)
+    		ztemp[itemp++] = Z[i][m];
 
-	      n++;
-	    }
-	  }
+    	      n++;
+    	    }
+    	  }
 	
-	  if (n == 0)
-	    continue;
+    	  if (n == 0)
+    	    continue;
 	
-	  itemp = 0;
-	  for (l = 0; l < n; l++) {
+    	  itemp = 0;
+    	  for (l = 0; l < n; l++) {
 
-	    for (m = 0; m < n_dim; m++)
-	      D_lambda[l][m] = ztemp[itemp++];
+    	    for (m = 0; m < n_dim; m++)
+    	      D_lambda[l][m] = ztemp[itemp++];
 
-	    D_lambda[l][n_dim] = stemp[l];
-	  }
+    	    D_lambda[l][n_dim] = stemp[l];
+    	  }
 
-	  for (m = 0; m < n_dim; m++) {
-	    mu_lambda[m] = Theta[k][m];
-	    A0_lambda[m][m] = (1 / phi2[(k * n_dim) + m]);
-	  }
+    	  for (m = 0; m < n_dim; m++) {
+    	    mu_lambda[m] = Theta[k][m];
+    	    A0_lambda[m][m] = (1 / phi2[(k * n_dim) + m]);
+    	  }
 
-	  for (m = 0; m < n_dim; m++)
-	    lambda_jk[m] = Lambda[j][k][m];
+    	  for (m = 0; m < n_dim; m++)
+    	    lambda_jk[m] = Lambda[j][k][m];
 
-	  omega2_jk[0] = Omega2[j][k];
+    	  omega2_jk[0] = Omega2[j][k];
 	
-	  bNormalReg(D_lambda, lambda_jk, omega2_jk, n, n_dim, 1, 1, mu_lambda,
-		     A0_lambda, 0, s0_omega2, nu0_omega2, 0, 0);
+    	  bNormalReg(D_lambda, lambda_jk, omega2_jk, n, n_dim, 1, 1, mu_lambda,
+    		     A0_lambda, 0, s0_omega2, nu0_omega2, 0, 0);
 
-	  for (m = 0; m < n_dim; m++)
-	    Lambda[j][k][m] = lambda_jk[m];
+    	  for (m = 0; m < n_dim; m++)
+    	    Lambda[j][k][m] = lambda_jk[m];
 
-	  Omega2[j][k] = omega2_jk[0];
+    	  Omega2[j][k] = omega2_jk[0];
 
-	  if (main_loop > burn) {
-	    if (keep == thin) {
-	      for (m = 0; m < n_dim; m++)
-		lambdaStore[ilambda++] = Lambda[j][k][m];
+    	  if (main_loop > burn) {
+    	    if (keep == thin) {
+    	      for (m = 0; m < n_dim; m++)
+    		lambdaStore[ilambda++] = Lambda[j][k][m];
 
-	      if (omega2_out) omega2Store[iomega2++] = Omega2[j][k];
-	    }
-	  }
+    	      if (omega2_out) omega2Store[iomega2++] = Omega2[j][k];
+    	    }
+    	  }
 
       /**** if the chain may be updated later ****/
-	  if (seed_store) {
-	    if (main_loop == n_gen) {
-	      for (m = 0; m < n_dim; m++)
-		lambdaLast[ilambdaLast++] = Lambda[j][k][m];
+    	  if (seed_store) {
+    	    if (main_loop == n_gen) {
+    	      for (m = 0; m < n_dim; m++)
+    		lambdaLast[ilambdaLast++] = Lambda[j][k][m];
 
-	      omega2Last[iomega2Last++] = Omega2[j][k];
-	    }
-	  }
+    	      omega2Last[iomega2Last++] = Omega2[j][k];
+    	    }
+    	  }
 
-	  R_FlushConsole();
-	  R_CheckUserInterrupt();
-	}
+    	  R_FlushConsole();
+    	  R_CheckUserInterrupt();
+    	}
       }
     }/** end of sampling lambda and omega2 **/
 
@@ -1028,10 +1057,10 @@ void R2endorse(/*   Data   */
     }
 
 
+    /** Start sampling delta **/
+    if (hierarchical) { /** hierarchical model **/
 
-    if (covariates) { /** Start sampling delta **/
-      if (hierarchical) { /** hierarchical model **/
-
+      if (covariates) {
 	/**  packing covariates **/
 	for (i = 0; i < n_samp; i++)
 	  for (m = 0; m < (n_dim - 1); m++)
@@ -1046,84 +1075,93 @@ void R2endorse(/*   Data   */
 
 	for (m = 0; m < (n_dim - 1); m++)
 	  delta[n_vil + m] = lambda_jk[m];
-	
+      } else {
+	/** sampling sig2 if hierarchical model without covariates **/
+	ssr = 0;
+	for (i = 0; i < n_samp; i++) {
+	  s2temp[i] = (X[i] - delta[village[i]]) * (X[i] - delta[village[i]]);
+	  ssr += s2temp[i];
+	}
+	sig2_x[0] = (ssr + s0_sig2 * nu0_sig2) / rchisq((double)n_samp+nu0_sig2);
+      }
 
-	/** random intercept for each village **/
-	for (m = 0; m < n_vil; m++) {
-	  itemp = 0;
-	  for (i = 0; i < n_samp; i++) {
-	    if (village[i] == m) {
-	      D_delta[itemp][1] = X[i];
+      /** random intercept for each village **/
+      for (m = 0; m < n_vil; m++) {
+	itemp = 0;
+	for (i = 0; i < n_samp; i++) {
+	  if (village[i] == m) {
+	    D_delta[itemp][1] = X[i];
 
+	    if (covariates) {
 	      for (l = 0; l < (n_dim - 1); l++)
 		D_delta[itemp][1] -= Z[i][(l + 1)] * delta[n_vil + l];
-
-	      D_delta[itemp][0] = 1;
-	      
-	      itemp++;
 	    }
+
+	    D_delta[itemp][0] = 1;
+	      
+	    itemp++;
 	  }
+	}
 
 
-	  /** prior for village specific intercept **/
-	  mu_theta[0] = 0;
-	  for (l = 0; l < n_vil_dim; l++)
-	    mu_theta[0] += D_kappa[m][l] * zeta[l];
+	/** prior for village specific intercept **/
+	mu_theta[0] = 0;
+	for (l = 0; l < n_vil_dim; l++)
+	  mu_theta[0] += D_kappa[m][l] * zeta[l];
 
-	  A0_theta[0][0] = (1 / rho2[0]);
+	A0_theta[0][0] = (1 / rho2[0]);
 	  
-	  /** regression **/
-	  bNormalReg(D_delta, lambda_jk, sig2_x, itemp, 1, 1, 1,
-		     mu_theta, A0_theta, 1, 1, 1, 1, 0);
+	/** regression **/
+	bNormalReg(D_delta, lambda_jk, sig2_x, itemp, 1, 1, 1,
+		   mu_theta, A0_theta, 1, 1, 1, 1, 0);
 
-	  delta[m] = lambda_jk[0];
+	delta[m] = lambda_jk[0];
 	  
-	}
-
-	if (main_loop > burn) {
-	  if (keep == thin) {
-	    for (m = 0; m < (n_vil + n_dim - 1); m++)
-	      deltaStore[idelta++] = delta[m];
-
-	    sig2Store[isig2++] = sig2_x[0];
-	  }
-	}
-
-	if (seed_store) {
-	  if (main_loop == n_gen) {
-	    for (m = 0; m < (n_vil + n_dim - 1); m++)
-	      deltaLast[ideltaLast++] = delta[m];
-
-	    sig2Last[0] = sig2_x[0];
-	  }
-	}
-
-
-      } else { /** non-hierarchical model **/
-
-	for (i = 0; i < n_samp; i++)
-	  D_delta[i][n_dim] = X[i];
-
-	bNormalReg(D_delta, delta, sig2_x, n_samp, n_dim, 1, 1,
-		   mu_delta, A0_delta, 1, 1, 1, 1, 0);
-
-	if (main_loop > burn) {
-	  if (keep == thin) {
-	    for (m = 0; m < n_dim; m++)
-	      deltaStore[idelta++] = delta[m];
-	  }
-	}
-
-	if (seed_store) {
-	  if (main_loop == n_gen) {
-	    for (m = 0; m < n_dim; m++)
-	      deltaLast[ideltaLast++] = delta[m];
-	  }
-	}
-
       }
+
+      if (main_loop > burn) {
+	if (keep == thin) {
+	  for (m = 0; m < (n_vil + n_dim - 1); m++)
+	    deltaStore[idelta++] = delta[m];
+
+	  sig2Store[isig2++] = sig2_x[0];
+	}
+      }
+
+      if (seed_store) {
+	if (main_loop == n_gen) {
+	  for (m = 0; m < (n_vil + n_dim - 1); m++)
+	    deltaLast[ideltaLast++] = delta[m];
+
+	  sig2Last[0] = sig2_x[0];
+	}
+      }
+
+
+    } else if (covariates) { /** non-hierarchical model **/
+
+      for (i = 0; i < n_samp; i++)
+	D_delta[i][n_dim] = X[i];
+
+      bNormalReg(D_delta, delta, sig2_x, n_samp, n_dim, 1, 1,
+		 mu_delta, A0_delta, 1, 1, 1, 1, 0);
+
+      if (main_loop > burn) {
+	if (keep == thin) {
+	  for (m = 0; m < n_dim; m++)
+	    deltaStore[idelta++] = delta[m];
+	}
+      }
+
+      if (seed_store) {
+	if (main_loop == n_gen) {
+	  for (m = 0; m < n_dim; m++)
+	    deltaLast[ideltaLast++] = delta[m];
+	}
+      }
+
     }
-      /** end of sampling delta **/
+    /** end of sampling delta **/
 
     if (hierarchical) { /** sampling zeta **/
 
