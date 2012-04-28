@@ -143,6 +143,18 @@ void bNormalReg(double **D,    /* data [X Y] */
 	for(k = 0; k < n_cov; k++)
 	  V[j][k] = -SS[j][k];
 
+
+
+
+      /* /\*** Debugging ***\/ */
+      /* Rprintf("Parameter: mean of coefs\n"); */
+      /* PdoubleArray(mean, n_cov); */
+      /* Rprintf("Parameter: cov of coefs\n"); */
+      /* PdoubleMatrix(V, n_cov, n_cov); */
+      /* /\*******\/ */
+
+
+
       rMVN(beta, mean, V, n_cov);
 
       /* draw sig2 from its conditional given beta */
@@ -155,6 +167,12 @@ void bNormalReg(double **D,    /* data [X Y] */
 	}
 	SS[n_cov][n_cov] += (D[i][n_cov] - temp) * (D[i][n_cov] - temp);
       }
+
+
+      /* /\*** debugging ***\/ */
+      /* Rprintf("Sum of squared residuals, %13g\n", SS[n_cov][n_cov]); */
+      /* /\*** debugging***\/ */
+
 
       /* draw sig2 */
       if (!sig2fixed) {

@@ -12,7 +12,7 @@
 }
 \usage{
 endorse(Y, data, data.village = NA, village = NA, treat = NA,
-        na.strings = 99, identical.lambda = TRUE, covariates = FALSE,
+        na.strings = 99, identical.lambda = FALSE, covariates = FALSE,
         formula.indiv = NA, hierarchical = FALSE, formula.village = NA,
         x.start = 0, s.start = 0, beta.start = 1, tau.start = NA,
         lambda.start = 0, omega2.start = .1, theta.start = 0,
@@ -42,9 +42,11 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
 
   \item{data}{data frame containing the individual-level variables.
+    The cases must be complete, i.e., no \code{NA}'s are allowed.
   }
 
   \item{data.village}{data frame containing the village-level variables.
+    The cases must be complete, i.e., no \code{NA}'s are allowed.
   }
 
   \item{village}{character.  The variable name of the village indicator
@@ -71,7 +73,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
 
   \item{identical.lambda}{logical.  If \code{TRUE}, the model with a common
-    lambda across questions will be fitted.  THe default is \code{FALSE}.
+    lambda across questions will be fitted.  The default is \code{FALSE}.
   }
 
   \item{covariates}{logical. If \code{TRUE}, the model includes
@@ -191,7 +193,8 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     If \code{kappa.start} is set to a matrix, the number of rows should
     be the number of the village level covariates,
     and the number of columns should be the number of
-    endorsers.
+    endorsers (times the number of questions, if the varying-lambda
+    model is fitted).
     The default is \code{0}.
   }
 
@@ -201,7 +204,8 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     \eqn{\psi_{k}^{2}}{psi_{k}^2} will be the diagonal matrix with
     the diagonal elements set to the scalar.
     If \code{psi2.start} is set to a vector, its length should
-    be the number of endorsers.
+    be the number of endorsers (times the number of questions, if the
+    varying-lambda model is fitted).
     The default is \code{.1}.
   }
 
@@ -515,7 +519,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   without covariates, for \eqn{j = 1, \dots, J, \; k = 1, \dots, K},
   and if \eqn{T_{ij} = 0, \; s_{ijk} = 0}{T_ij = 0, s_ijk = 0}.
 
-  The \eqn{\lambda}'s in the support parameter model are modelled in the
+  The \eqn{\lambda}'s in the support parameter model are modeled in the
   following hierarchical manner,
   \deqn{
     \lambda_{jk} \sim \mathcal{N}(\theta_k, \; \Phi_k)
@@ -524,8 +528,34 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }  
   for \eqn{k = 1, \dots, K}.
 
+
+  If you set \code{identical.lambda = FALSE} and \code{hierarchical = TRUE},
+  the model for \eqn{s_{ijk}} is if \eqn{T_{ij} \neq 0},
+  \deqn{
+    s_{ijk} \sim \mathcal{N}(\lambda^{0}_{jk, village[i]} + Z_i^{T} \lambda_{jk}, \; \omega_{jk}^2)
+  }{%
+    s_ijk ~ N(\lambda^{0}_{jk, village[i]} + Z_i^T \lambda_jk, \omega_jk^2)%
+  }
+  and
+  \deqn{
+    \lambda^{0}_{jk, village[i]} \sim \mathcal{N}(V_{village[i]}^{T} \kappa_{jk}, \; \psi_{jk}^2)
+  }{%
+    lambda^{0}_{jk, village[i]} ~ N( V_village[i]^T \kappa_jk, \psi_jk^2)%
+  }
+  for \eqn{k = 1, \dots, K} and \eqn{j = 1, \dots, J}.  In addition,
+  \eqn{\lambda} and \eqn{\kappa} are modeled in the following
+  hierarchical manner,
+  \deqn{
+    \lambda^{*}_{jk} \sim \mathcal{N}(\theta_k, \; \Phi_k)
+  }{%
+    \lambda*_jk ~ N(\theta_k, \Phi_k)%
+  }  
+  for \eqn{k = 1, \dots, K}, where \eqn{\lambda^{*}_{jk} =
+  (\lambda^{T}_{jk}, \kappa^{T}_{jk})^{T}}.
+
+
   If you set \code{identical.lambda = TRUE} and \code{hierarchical = TRUE},
-  the model is if \eqn{T_{ij} \neq 0},
+  the model for \eqn{s_{ijk}} is if \eqn{T_{ij} \neq 0},
   \deqn{
     s_{ijk} \sim \mathcal{N}(\lambda^{0}_{k, village[i]} + Z_i^{T} \lambda_{k}, \; \omega_{k}^2)
   }{%
@@ -549,7 +579,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   for \eqn{i = 1, \dots, N} where \eqn{\sigma_x^2} is a known prior
   variance.
 
-  If you set \code{identical.lambda = TRUE} and \code{hierarchical = TRUE},
+  If you set \code{hierarchical = TRUE},
   the model is
   \deqn{
     x_{i} \sim \mathcal{N}(\delta^{0}_{village[i]} + Z_i^{T} \delta, \; \sigma^2)
@@ -691,21 +721,53 @@ Y <- list(Q1 = c("Polio.a", "Polio.b", "Polio.c", "Polio.d", "Polio.e"),
           Q4 = c("Curriculum.a", "Curriculum.b", "Curriculum.c",
                  "Curriculum.d", "Curriculum.e"))
 
-## Varying lambda non-hierarchical model without covariates
+
+
+## Varying-lambda non-hierarchical model without covariates
 endorse.out <- endorse(Y = Y, data = pakistan, identical.lambda = FALSE,
                        covariates = FALSE, hierarchical = FALSE)
 
-## Varying lambda non-hierarchical model with covariates
+## Varying-lambda non-hierarchical model with covariates
 indiv.covariates <- formula( ~ female + rural)
 endorse.out <- endorse(Y = Y, data = pakistan, identical.lambda = FALSE,
                        covariates = TRUE, formula.indiv = indiv.covariates,
                        hierarchical = FALSE)
 
-## Common lambda non-hierarchical model with covariates
+## Common-lambda non-hierarchical model with covariates
 indiv.covariates <- formula( ~ female + rural)
 endorse.out <- endorse(Y = Y, data = pakistan, identical.lambda = TRUE,
                        covariates = TRUE, formula.indiv = indiv.covariates,
                        hierarchical = FALSE)
+
+## Varying-lambda hierarchical model without covariates
+div.data <- data.frame(division = sort(unique(pakistan$division)))
+div.formula <- formula(~ 1)
+endorse.out <- endorse(Y = Y, data = pakistan, data.village = div.data,
+                       village = "division", identical.lambda = FALSE,
+                       covariates = FALSE, hierarchical = TRUE,
+                       formula.village = div.formula)
+
+## Varying-lambda hierarchical model with covariates
+endorse.out <- endorse(Y = Y, data = pakistan, data.village = div.data,
+                       village = "division", identical.lambda = FALSE,
+                       covariates = TRUE,
+                       formula.indiv = indiv.covariates,
+                       hierarchical = TRUE,
+                       formula.village = div.formula)
+
+## Common-lambda hierarchical model without covariates
+endorse.out <- endorse(Y = Y, data = pakistan, data.village = div.data,
+                       village = "division", identical.lambda = TRUE,
+                       covariates = FALSE, hierarchical = TRUE,
+                       formula.village = div.formula)
+
+## Common-lambda hierarchical model with covariates
+endorse.out <- endorse(Y = Y, data = pakistan, data.village = div.data,
+                       village = "division", identical.lambda = TRUE,
+                       covariates = TRUE,
+                       formula.indiv = indiv.covariates,
+                       hierarchical = TRUE,
+                       formula.village = div.formula)
 }
 }
 
