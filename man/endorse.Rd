@@ -12,7 +12,7 @@
 }
 \usage{
 endorse(Y, data, data.village = NA, village = NA, treat = NA,
-        na.strings = 99, identical.lambda = FALSE, covariates = FALSE,
+        na.strings = 99, identical.lambda = TRUE, covariates = FALSE,
         formula.indiv = NA, hierarchical = FALSE, formula.village = NA,
         x.start = 0, s.start = 0, beta.start = 1, tau.start = NA,
         lambda.start = 0, omega2.start = .1, theta.start = 0,
@@ -21,9 +21,9 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
         mu.x = 0, mu.theta = 0, mu.kappa = 0, mu.delta = 0, mu.zeta = 0,
         precision.beta = 0.04, precision.x = 1, precision.theta = 0.04,
         precision.kappa = 0.04, precision.delta = 0.04,
-        precision.zeta = 0.04, s0.omega2= .2, nu0.omega2 = 30,
-        s0.phi2 = .2, nu0.phi2 = 30, s0.psi2 = .2, nu0.psi2 = 30,
-        s0.sig2 = 1, nu0.sig2 = 400, s0.rho2 = .2, nu0.rho2 = 30,
+        precision.zeta = 0.04, s0.omega2= 1, nu0.omega2 = 10,
+        s0.phi2 = 1, nu0.phi2 = 10, s0.psi2 = 1, nu0.psi2 = 10,
+        s0.sig2 = 1, nu0.sig2 = 400, s0.rho2 = 1, nu0.rho2 = 10,
         MCMC = 20000, burn = 1000, thin = 1,  mh = TRUE, prop = 0.001,
         x.sd = TRUE, tau.out = FALSE, s.out = FALSE, omega2.out = TRUE,
         phi2.out = TRUE, psi2.out = TRUE, verbose = TRUE,
@@ -33,7 +33,8 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
 \arguments{
 
   \item{Y}{a list of the variable names for the responses. It should
-    take the following form: \code{list(Q1 = c("varnameQ1.1", ...), Q2 =
+    take the following form: \\
+    \code{list(Q1 = c("varnameQ1.1", ...), Q2 =
     c("varnameQ2.1", ...), ...)}. If \code{treat} is \code{NA}, the first
     variable for each question should be the responses of the
     control observations while each of the other variables should
@@ -73,7 +74,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
 
   \item{identical.lambda}{logical.  If \code{TRUE}, the model with a common
-    lambda across questions will be fitted.  The default is \code{FALSE}.
+    lambda across questions will be fitted.  The default is \code{TRUE}.
   }
 
   \item{covariates}{logical. If \code{TRUE}, the model includes
@@ -316,20 +317,20 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   \item{s0.omega2}{scalar. The scale of the independent scaled
     inverse- chi-squared    
     prior for the variance parameter in the support parameter model.
-    The default is \code{.2}.
+    The default is \code{1}.
   }
 
   \item{nu0.omega2}{scalar. The degrees of freedom of the independent
     scaled inverse-chi-squared    
     prior for the variance parameter in the support parameter model.
-    The default is \code{30}.
+    The default is \code{10}.
   }
 
   \item{s0.phi2}{scalar. The scale of the independent
     scaled inverse-chi-squared
     prior for the variances of the coefficients in
     the support parameter model.
-    The default is \code{.2}.
+    The default is \code{1}.
   }
 
   \item{nu0.phi2}{scalar. The degrees of freedom of the independent
@@ -337,14 +338,14 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     inverse-chi-squared
     prior for the variances of the coefficients in
     the support parameter model.
-    The default is \code{30}.
+    The default is \code{10}.
   }
 
   \item{s0.psi2}{scalar. The scale of the independent
     scaled inverse-chi-squared
     prior for the variances of the village random intercepts in
     the support parameter model.
-    The default is \code{.2}.
+    The default is \code{1}.
   }
 
   \item{nu0.psi2}{scalar. The degrees of freedom of the independent
@@ -352,7 +353,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     inverse-chi-squared
     prior for the variances of the village random intercepts in
     the support parameter model.
-    The default is \code{30}.
+    The default is \code{10}.
   }
 
   \item{s0.sig2}{scalar. The scale of the independent
@@ -373,7 +374,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     scaled inverse-chi-squared
     prior for the variances of the village random intercepts in
     the ideal point model.
-    The default is \code{.2}.
+    The default is \code{1}.
   }
 
   \item{nu0.rho2}{scalar. The degrees of freedom of the independent
@@ -381,7 +382,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     inverse-chi-squared
     prior for the variances of the village random intercepts in
     the ideal point model.
-    The default is \code{30}.
+    The default is \code{10}.
   }
 
   \item{MCMC}{the number of iterations for the sampler. The default is
@@ -604,9 +605,9 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
   for \eqn{j = 1, \dots, J},
   \deqn{
-    \beta_j \sim \mathcal{N}(\mu_\beta, \; \sigma_\beta^2)
+    \beta_j \sim \mathcal{TN}_{\beta_j > 0}(\mu_\beta, \; \sigma_\beta^2)
   }{%
-    \beta_j ~ N(\mu_\beta, \sigma_\beta^2)%
+    \beta_j ~ TN_{\beta_j > 0}(\mu_\beta, \sigma_\beta^2)%
   }
   for \eqn{j = 1, \dots, J},
   \deqn{
@@ -664,8 +665,8 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
 
   \item{lambda}{an mcmc object. A sample from the posterior distribution
-    of \eqn{\lambda}{lambda}.  Variable names are \code{lambda(question
-      index)(group index).(covariate index)}.
+    of \eqn{\lambda}{lambda}.  Variable names are: \\
+    \code{lambda(question index)(group index).(covariate index)}.
   }
 
   \item{theta}{an mcmc object. A sample from the posterior distribution
