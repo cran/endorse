@@ -70,6 +70,36 @@ void R2GeoCount (double *dX_lon, double *dX_lat, int *n_X, double *dY_lon, doubl
 }
 
 
+void R2GeoId (double *dX_lon, double *dX_lat, int *n_X, double *dY_lon, double *dY_lat,
+	      int *n_Y, double *Z, int *Store_count) {
+  /* loop counters */
+  int j;
+  /* counter for each point */
+  int n_temp = 0;
+  /* distance */
+  double temp;
+  /* structs for an event and a point */
+  Position X, Y;
+
+  /* location of a point */
+  X.lon = dX_lon[0];
+  X.lat = dX_lat[0];
+  
+  for (j = 0; j < *n_Y; j++) {/* for each event of Y */
+    /* location of an event */
+    Y.lon = dY_lon[j];
+    Y.lat = dY_lat[j];
+    
+    /* calculate the distance */
+    temp = DistanceInMeters(X, Y);
+    
+    if (temp <= *Z * 1000) {
+      Store_count[n_temp] = j+1;
+      n_temp++;
+    }
+  }
+}
+
 
 /* 
    C wrapper code for endorse() in "endorse" pachage.

@@ -14,9 +14,10 @@
 endorse(Y, data, data.village = NA, village = NA, treat = NA,
         na.strings = 99, identical.lambda = TRUE, covariates = FALSE,
         formula.indiv = NA, hierarchical = FALSE, formula.village = NA,
-        x.start = 0, s.start = 0, beta.start = 1, tau.start = NA,
-        lambda.start = 0, omega2.start = .1, theta.start = 0,
-        phi2.start = .1, kappa.start = 0, psi2.start = 1,
+        h = NULL, group = NULL, x.start = 0, s.start = 0,
+        beta.start = 1, tau.start = NA, lambda.start = 0,
+        omega2.start = .1, theta.start = 0, phi2.start = .1,
+        kappa.start = 0, psi2.start = 1,
         delta.start = 0, zeta.start = 0, rho2.start = 1, mu.beta = 0,
         mu.x = 0, mu.theta = 0, mu.kappa = 0, mu.delta = 0, mu.zeta = 0,
         precision.beta = 0.04, precision.x = 1, precision.theta = 0.04,
@@ -33,13 +34,15 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
 \arguments{
 
   \item{Y}{a list of the variable names for the responses. It should
-    take the following form: \\
-    \code{list(Q1 = c("varnameQ1.1", ...), Q2 =
-    c("varnameQ2.1", ...), ...)}. If \code{treat} is \code{NA}, the first
+    take the following form:
+    \code{list(Q1 = c("varnameQ1.1", ...), Q2 = c("varnameQ2.1", ...), ...)}.
+    If \code{treat} is \code{NA}, the first
     variable for each question should be the responses of the
     control observations while each of the other variables should
     correspond to each endorser. \code{treat} should be supplied if
     only one variable name is provided for a question in this argument.
+    If auxiliary information is included, it is assumed that \code{Y} is 
+    coded such that higher values indicate more of the sensitive trait.
   }
 
   \item{data}{data frame containing the individual-level variables.
@@ -47,11 +50,17 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
 
   \item{data.village}{data frame containing the village-level variables.
-    The cases must be complete, i.e., no \code{NA}'s are allowed.
+    The cases must be complete, i.e., no \code{NA}'s are allowed. If 
+    auxiliary information is included, the data frame should include only
+    the unique group identifier and the unique identifier for the units at 
+    which prediction is desired. The package does not currently support 
+    the inclusion of covariates in models with auxiliary information.
   }
 
   \item{village}{character.  The variable name of the village indicator
-    in the individual-level data.
+    in the individual-level data. If auxiliary information is included,
+    this should correspond to the variable name of the units at which
+    prediction is desired. 
   }
 
   \item{treat}{An optional matrix of non negative integers indicating
@@ -93,6 +102,17 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   \item{formula.village}{a symbolic description specifying the village level 
     covariates for the support parameter and the ideal points. The formula
     should be one-sided, e.g. \code{ ~ V1 + V2}.
+  }
+  
+  \item{h}{Auxiliary data functionality. Optional named numeric vector with 
+  length equal to number of groups. Names correspond to group labels and 
+  values correspond to auxiliary moments (i.e. to the known share
+  of the sensitive trait at the group level).
+  }
+  
+  \item{group}{Auxiliary data functionality. Optional character string.  
+  The variable name of the group indicator in the individual-level data 
+  (e.g. \code{group = "county"}).
   }
 
   \item{x.start}{starting values for the ideal points vector \eqn{x}. If
@@ -254,6 +274,10 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   \item{mu.kappa}{the mean of the independent Normal prior on the
     coefficients of village level covariates. Can be either a scalar or a matrix of
     dimension the number of covariates times the number of endorsers.
+    If auxiliary information is included, the value of \code{mu.kappa} 
+    will be computed for each group such that the prior probability of
+    the support parameter taking a positive value is equal to the known
+    value of \code{h}.
     The default is \code{0}.
   }
 
@@ -295,6 +319,8 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
     independent Normal prior on the coefficients of village level covariates
     in the support parameter model. Can be either a scalar or
     a vector of the same length as the dimension of covariates.
+    If auxiliary information is included, the value of \code{precision.kappa} 
+    will be fixed to \code{100000}.
     The default is \code{0.04}.
   }
 
@@ -317,12 +343,16 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   \item{s0.omega2}{scalar. The scale of the independent scaled
     inverse- chi-squared    
     prior for the variance parameter in the support parameter model.
+    If auxiliary information is included, the value of \code{s0.omega2} 
+    will be fixed to the default.
     The default is \code{1}.
   }
 
   \item{nu0.omega2}{scalar. The degrees of freedom of the independent
     scaled inverse-chi-squared    
     prior for the variance parameter in the support parameter model.
+    If auxiliary information is included, the value of \code{nu0.omega2} 
+    will be fixed to the default.
     The default is \code{10}.
   }
 
@@ -502,7 +532,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
   where \eqn{l \in \{0, 1, \dots, L_{j} \}, \tau_{0} = -\infty <
     \tau_{1} = 0 < \tau_{2} < \dots < \tau_{L_{j}} = \infty}.
-  \eqn{\alpha_j} and \eqn{\beta_j} are assumed to be positive.
+  \eqn{\beta_j}'s are assumed to be positive.
 
   The model for the support parameter, \eqn{s_{ijk}}, is given by
   if \eqn{T_{ij} \neq 0},
@@ -665,7 +695,7 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   }
 
   \item{lambda}{an mcmc object. A sample from the posterior distribution
-    of \eqn{\lambda}{lambda}.  Variable names are: \\
+    of \eqn{\lambda}{lambda}.  Variable names are:
     \code{lambda(question index)(group index).(covariate index)}.
   }
 
@@ -702,6 +732,14 @@ endorse(Y, data, data.village = NA, village = NA, treat = NA,
   is identified after either of the above standardization, where
   \eqn{\delta_0}{delta_0} and \eqn{\zeta_0}{zeta_0} denote the
   intercepts.
+  
+  When using the auxiliary data functionality, the following objects are included:
+
+  \item{aux}{logical value indicating whether estimation incorporates auxiliary moments
+  }
+  
+  \item{nh}{integer count of the number of auxiliary moments
+  }
 }
 
 \references{
@@ -773,10 +811,13 @@ endorse.out <- endorse(Y = Y, data = pakistan, data.village = div.data,
 }
 
 \author{
-  Kosuke Imai, Department of Politics, Princeton University
-  \email{kimai@Princeton.Edu}, \url{http://imai.princeton.edu}
-
   Yuki Shiraito, Department of Politics, Princeton University
-  \email{shiraito@Princeton.Edu}.
+  \email{shiraito@Princeton.Edu}, \url{http://www.princeton.edu/~shiraito};  
+  Kosuke Imai, Department of Politics, Princeton University
+  \email{kimai@Princeton.Edu}, \url{http://imai.princeton.edu};
+  Bryn Rosenfeld, Department of Political Science, University of
+  Southern California
+  \email{brosenfe@usc.edu}, \url{https://sites.google.com/site/brynrosenfeld/}
+
 }
 

@@ -9,6 +9,8 @@ endorse <- function(Y,
                     formula.indiv = NA,
                     hierarchical = FALSE,
                     formula.village = NA,
+                    h = NULL,
+                    group = NULL,
                     x.start = 0,
                     s.start = 0,
                     beta.start = 1,
@@ -76,6 +78,27 @@ endorse <- function(Y,
 
   var.names.indiv <- colnames(cov.mat)
 
+  # auxiliary data check
+  aux.check <- !(is.null(h) & is.null(group))
+  
+  # auxiliary data functionality
+  # requires h (vector of auxiliary info), 
+  # group (a vector identifying the groups for which auxiliary info is available)
+  
+  if (aux.check) {
+    
+    formula.village <- as.formula(paste0("~-1 + factor(", group, ")"))    
+    
+    nu0.omega2 <- 10
+    
+    s0.omega2 <- 1
+    
+    mu.kappa <- matrix(qt(p = h, df = 10))
+    
+    precision.kappa <- 100000
+    
+  }
+  
   #############################################
   ## NEED TO MODIFY
   #############################################
@@ -178,28 +201,28 @@ endorse <- function(Y,
   }
 
   if (update) {
-    beta.start <- update.start$beta.start
+    beta.start <- update.start$beta.restart
     
     tau.start <- matrix(-99, nrow = J, ncol = max.L)
     for (j in 1:J) {
-      tau.start[j, 1:(max.L - 1)] <- update.start$tau.start[((max.L - 1) *
+      tau.start[j, 1:(max.L - 1)] <- update.start$tau.restart[((max.L - 1) *
                                                              (j - 1) + 1):((max.L -
                                                                             1) * j)]
       tau.start[j, L[j]] <- max(tau.start[j, ]) + 1000
     }
 
-    x.start <- update.start$x.start
-    s.start <- update.start$s.start
-    lambda.start <- update.start$lambda.start
-    omega2.start <- update.start$omega2.start
-    theta.start <- update.start$theta.start
-    phi2.start <- update.start$phi2.start
-    if (covariates) delta.start <- update.start$delta.start
+    x.start <- update.start$x.restart
+    s.start <- update.start$s.restart
+    lambda.start <- update.start$lambda.restart
+    omega2.start <- update.start$omega2.restart
+    theta.start <- update.start$theta.restart
+    phi2.start <- update.start$phi2.restart
+    if (covariates) delta.start <- update.start$delta.restart
     if (hierarchical) {
-      kappa.start <- update.start$kappa.start
-      psi2.start <- update.start$psi2.start
-      zeta.start <- update.start$zeta.start
-      rho2.start <- update.start$rho2.start
+      kappa.start <- update.start$kappa.restart
+      psi2.start <- update.start$psi2.restart
+      zeta.start <- update.start$zeta.restart
+      rho2.start <- update.start$rho2.restart
     }
 
     .Random.seed <- update.start$seed
@@ -610,20 +633,20 @@ endorse <- function(Y,
               rho2 = if (hierarchical) matrix(as.double(temp$rho2Store), byrow = TRUE, ncol = 1, nrow = printout) else NULL,
               accept.ratio = if (mh) as.double(temp$accept.ratio) else NULL,
               seed = if (seed.store) seedStore else NULL,
-              beta.start = if (seed.store) matrix(as.double(temp$betaLast), nrow = J, ncol = 2, byrow = TRUE) else NULL,
-              tau.start = if (seed.store) as.double(temp$tauLast) else NULL,
-              x.start = if (seed.store) as.double(temp$xLast) else NULL,
-              s.start = if (seed.store) matrix(as.double(temp$sLast), nrow = N, ncol = J, byrow = TRUE) else NULL,
-              lambda.start = if (seed.store) as.double(temp$lambdaLast) else NULL,
-              theta.start = if (seed.store & !identical.lambda) as.double(temp$thetaLast) else NULL,
-              kappa.start = if (seed.store & hierarchical) as.double(temp$kappaLast) else NULL,
-              delta.start = if (seed.store & (covariates | hierarchical)) as.double(temp$deltaLast) else NULL,
-              zeta.start = if (seed.store & hierarchical) as.double(temp$zetaLast) else NULL,
-              omega2.start = if (seed.store) as.double(temp$omega2Last) else NULL,
-              phi2.start = if (seed.store & !identical.lambda) as.double(temp$phi2Last) else NULL,
-              psi2.start = if (seed.store & hierarchical) as.double(temp$psi2Last) else NULL,
-	      sig2.start = if (seed.store & (covariates | hierarchical)) as.double(temp$sig2.start) else NULL,
-              rho2.start = if (seed.store & hierarchical) as.double(temp$rho2Last) else NULL,
+              beta.restart = if (seed.store) matrix(as.double(temp$betaLast), nrow = J, ncol = 2, byrow = TRUE) else NULL,
+              tau.restart = if (seed.store) as.double(temp$tauLast) else NULL,
+              x.restart = if (seed.store) as.double(temp$xLast) else NULL,
+              s.restart = if (seed.store) matrix(as.double(temp$sLast), nrow = N, ncol = J, byrow = TRUE) else NULL,
+              lambda.restart = if (seed.store) as.double(temp$lambdaLast) else NULL,
+              theta.restart = if (seed.store & !identical.lambda) as.double(temp$thetaLast) else NULL,
+              kappa.restart = if (seed.store & hierarchical) as.double(temp$kappaLast) else NULL,
+              delta.restart = if (seed.store & (covariates | hierarchical)) as.double(temp$deltaLast) else NULL,
+              zeta.restart = if (seed.store & hierarchical) as.double(temp$zetaLast) else NULL,
+              omega2.restart = if (seed.store) as.double(temp$omega2Last) else NULL,
+              phi2.restart = if (seed.store & !identical.lambda) as.double(temp$phi2Last) else NULL,
+              psi2.restart = if (seed.store & hierarchical) as.double(temp$psi2Last) else NULL,
+	      sig2.restart = if (seed.store & (covariates | hierarchical)) as.double(temp$sig2.start) else NULL,
+              rho2.restart = if (seed.store & hierarchical) as.double(temp$rho2Last) else NULL,
               village.indicator = village + 1,
               model.matrix.indiv = cov.mat,
               formula.indiv = formula.indiv,
@@ -780,6 +803,12 @@ endorse <- function(Y,
   }
 
   names(res$accept.ratio) <- paste("Q", 1:J, sep = "")
+
+  res$aux <- aux.check
+
+  if(aux.check){
+    res$nh <- length(h)
+  }
 
   return(res)
 }  
