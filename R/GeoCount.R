@@ -22,7 +22,7 @@ GeoCount <- function (x, y, distance, x.latitude = "latitude",
   y.lat <- eval(parse(text = paste("y$", y.latitude, sep = "")))
 
   
-  temp <- .C("R2GeoCount",
+  temp <- .Call("R2GeoCount",
              as.numeric(x.lon),
              as.numeric(x.lat),
              as.integer(n.x),
@@ -31,7 +31,8 @@ GeoCount <- function (x, y, distance, x.latitude = "latitude",
              as.integer(n.y),
              as.numeric(distance),
              Store.count = integer(n.x),
-             package = "endorse")
+             PACKAGE = "endorse"
+             )
 
   res <- as.double(temp$Store.count)
   

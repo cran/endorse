@@ -18,7 +18,7 @@ double ArcInRadians(Position from, Position to) {
 }
 
 double DistanceInMeters(Position from, Position to) {
-    return EARTH_RADIUS_METERS*ArcInRadians(from, to);
+  return EARTH_RADIUS_METERS*ArcInRadians(from, to);
 }
 
 /* int main(int argc, char *argv[])  */
