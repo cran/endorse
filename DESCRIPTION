@@ -1,6 +1,6 @@
 Package: endorse
-Version: 1.5.1
-Date: 2017-3-19
+Version: 1.5.2
+Date: 2017-4-18
 Title: Bayesian Measurement Models for Analyzing Endorsement
         Experiments
 Authors@R: c(person("Yuki", "Shiraito", role = c("aut","cre"), email = "shiraito@princeton.edu"),
@@ -15,6 +15,6 @@ LazyData: yes
 License: GPL (>= 2)
 URL: http://imai.princeton.edu/software/endorse.html
 NeedsCompilation: yes
-Packaged: 2017-03-19 23:28:18 UTC; yuki
+Packaged: 2017-04-19 00:44:49 UTC; yuki
 Repository: CRAN
-Date/Publication: 2017-03-20 00:03:59 UTC
+Date/Publication: 2017-04-19 03:59:13 UTC

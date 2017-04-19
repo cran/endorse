@@ -1,6 +1,6 @@
 typedef struct {
-  double lon;
-  double lat;
+    double lon;
+    double lat;
 } Position;
 
 double ArcInRadians (Position from, Position to);
