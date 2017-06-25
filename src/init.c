@@ -6,6 +6,9 @@
 void R2GeoCount (double *dX_lon, double *dX_lat, int *n_X, double *dY_lon,
 		 double *dY_lat, int *n_Y, double *Z, int *Store_count);
 
+void R2GeoId (double *dX_lon, double *dX_lat, int *n_X, double *dY_lon,
+	      double *dY_lat, int *n_Y, double *Z, int *Store_count);
+
 void R2endorse(int *dY,	int *dT, double *dZ, double *dV, int *village,
 	       int *param_indiv, int *n_cat, int *param_village, double *X,
 	       double *dS, double *sbeta, double *stau, double *slambda,
@@ -28,6 +31,9 @@ void R2endorse(int *dY,	int *dT, double *dZ, double *dV, int *village,
 static R_NativePrimitiveArgType R2GeoCount_t[] = {
   REALSXP, REALSXP, INTSXP, REALSXP, REALSXP, INTSXP, REALSXP, INTSXP
 };
+static R_NativePrimitiveArgType R2GeoId_t[] = {
+  REALSXP, REALSXP, INTSXP, REALSXP, REALSXP, INTSXP, REALSXP, INTSXP
+};
 static R_NativePrimitiveArgType R2endorse_t[] = {
   INTSXP, INTSXP, REALSXP, REALSXP, INTSXP, INTSXP, INTSXP,
   INTSXP, REALSXP, REALSXP, REALSXP, REALSXP, REALSXP, REALSXP,
@@ -44,6 +50,7 @@ static R_NativePrimitiveArgType R2endorse_t[] = {
 static const R_CMethodDef CEntries[] = {
   {"R2endorse",  (DL_FUNC) &R2endorse,  64, R2endorse_t},
   {"R2GeoCount", (DL_FUNC) &R2GeoCount,  8, R2GeoCount_t},
+  {"R2GeoId",    (DL_FUNC) &R2GeoId,     8, R2GeoId_t},
   {NULL, NULL, 0}
 };
 
