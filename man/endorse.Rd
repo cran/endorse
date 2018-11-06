@@ -823,10 +823,6 @@ endorse.out <- endorse(Y = Y, data = pakistan, data.village = div.data,
 }
 
 \author{
-  Kosuke Imai, Department of Politics, Princeton University
-  \email{kimai@Princeton.Edu}, \url{http://imai.princeton.edu}
-
-  Yuki Shiraito, Department of Politics, Princeton University
-  \email{shiraito@Princeton.Edu}.
+  Shiraito, Y. and Imai, K.
 }
 
