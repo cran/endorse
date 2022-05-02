@@ -39,6 +39,7 @@ GeoCount(x, y, distance, x.latitude = "latitude",
 }
 
 \author{
-  Shiraito, Y.
+  Yuki Shiraito, Department of Political Science, University of Michigan
+  \email{shiraito@umich.edu}.
 }
 

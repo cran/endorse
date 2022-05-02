@@ -57,6 +57,7 @@ endorsement experiment data.
 \seealso{\code{\link{endorse}} for model fitting}
 
 \author{
-  Shiraito, Y.
+  Yuki Shiraito, Department of Political Science, University of Michigan
+  \email{shiraito@umich.edu}.
 }
 

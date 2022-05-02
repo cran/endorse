@@ -52,17 +52,21 @@ endorse.plot(Y, data, scale, dk = 98, ra = 99, yaxis = NULL,
 }
 
 \examples{
-\dontrun{
+
 data(pakistan)
 
 Y <- c("Polio.a", "Polio.b", "Polio.c", "Polio.d", "Polio.e")
 yaxis <- c("Control", "Kashmir", "Afghan", "Al-Qaida", "Tanzeems")
 
 endorse.plot(Y = Y, data = pakistan, scale = 5)
-}
+
 }
 
 \author{
-  Shiraito, Y. and Imai, K.
+  Yuki Shiraito, Department of Political Science, University of Michigan
+  \email{shiraito@umich.edu}.
+
+  Kosuke Imai, Department of Government and Statistics, Harvard University
+  \email{Imai@Harvard.Edu}, \url{https://imai.fas.harvard.edu/}
 }
 
